@@ -1,0 +1,2456 @@
+openapi: "3.0.3"
+info:
+  title: Infoblox WAPI
+  description: >
+    Infoblox WAPI (Web API) v2.12 (compatible with v2.10, v2.11 and v2.12).
+    Base path: /wapi/v2.12/
+    Authentication: HTTP Basic Auth.
+    Objects are identified by _ref (opaque string), except sites (site_id).
+    The /site endpoints and the /health check are custom extensions of the
+    lab mock server and are not part of the standard Infoblox WAPI.
+  version: "2.12"
+
+security:
+  - basicAuth: []
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+
+  parameters:
+    ReturnFields:
+      name: _return_fields
+      in: query
+      description: Comma-separated list of fields to return (replaces the defaults).
+      schema: { type: string }
+    ReturnFieldsPlus:
+      name: _return_fields+
+      in: query
+      description: Fields to return in addition to the defaults. Encode "+" as "%2B".
+      schema: { type: string }
+    MaxResults:
+      name: _max_results
+      in: query
+      description: Maximum number of results (default 1000).
+      schema: { type: integer, default: 1000 }
+    Paging:
+      name: _paging
+      in: query
+      description: Enables paging. Requires _return_as_object=1.
+      schema: { type: integer, enum: [0, 1] }
+    ReturnAsObject:
+      name: _return_as_object
+      in: query
+      description: Wraps the response in {"result":[...]}.
+      schema: { type: integer, enum: [0, 1] }
+    PageId:
+      name: _page_id
+      in: query
+      description: Page ID used to continue paging.
+      schema: { type: string }
+    Ref:
+      name: _ref
+      in: path
+      required: true
+      description: Opaque Infoblox object reference.
+      schema: { type: string }
+
+  schemas:
+    ExtAttrs:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          value: { type: string }
+
+    NextAvailableIpRequest:
+      type: object
+      properties:
+        num:
+          type: integer
+          default: 1
+        exclude:
+          type: array
+          items: { type: string }
+
+    NextAvailableNetworkRequest:
+      type: object
+      required: [cidr]
+      properties:
+        cidr: { type: integer }
+        num: { type: integer, default: 1 }
+        exclude:
+          type: array
+          items: { type: string }
+
+    View:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        network_view: { type: string }
+        comment: { type: string }
+        is_default: { type: boolean }
+        extattrs: { $ref: "#/components/schemas/ExtAttrs" }
+
+    ZoneAuth:
+      type: object
+      properties:
+        _ref: { type: string }
+        fqdn: { type: string }
+        view: { type: string }
+        zone_format:
+          type: string
+          enum: [FORWARD, IPV4, IPV6]
+        comment: { type: string }
+        extattrs: { $ref: "#/components/schemas/ExtAttrs" }
+
+    ZoneDelegated:
+      type: object
+      properties:
+        _ref: { type: string }
+        fqdn: { type: string }
+        view: { type: string }
+        delegate_to:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              address: { type: string }
+        comment: { type: string }
+
+    ZoneForward:
+      type: object
+      properties:
+        _ref: { type: string }
+        fqdn: { type: string }
+        view: { type: string }
+        forward_to:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              address: { type: string }
+        forwarders_only: { type: boolean }
+        comment: { type: string }
+
+    RecordA:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        ipv4addr: { type: string }
+        view: { type: string }
+        zone: { type: string }
+        ttl: { type: integer }
+        use_ttl: { type: boolean }
+        comment: { type: string }
+        extattrs: { $ref: "#/components/schemas/ExtAttrs" }
+
+    RecordAAAA:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        ipv6addr: { type: string }
+        view: { type: string }
+        ttl: { type: integer }
+        use_ttl: { type: boolean }
+        comment: { type: string }
+
+    RecordCNAME:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        canonical: { type: string }
+        view: { type: string }
+        ttl: { type: integer }
+        use_ttl: { type: boolean }
+        comment: { type: string }
+
+    RecordHostIPv4:
+      type: object
+      properties:
+        ipv4addr: { type: string }
+        mac: { type: string }
+        configure_for_dhcp: { type: boolean }
+
+    RecordHost:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        ipv4addrs:
+          type: array
+          items: { $ref: "#/components/schemas/RecordHostIPv4" }
+        ipv6addrs:
+          type: array
+          items:
+            type: object
+            properties:
+              ipv6addr: { type: string }
+              duid: { type: string }
+              configure_for_dhcp: { type: boolean }
+        view: { type: string }
+        comment: { type: string }
+        extattrs: { $ref: "#/components/schemas/ExtAttrs" }
+
+    RecordNS:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        nameserver: { type: string }
+        addresses:
+          type: array
+          items:
+            type: object
+            properties:
+              address: { type: string }
+        view: { type: string }
+
+    RecordPTR:
+      type: object
+      properties:
+        _ref: { type: string }
+        ptrdname: { type: string }
+        ipv4addr: { type: string }
+        ipv6addr: { type: string }
+        view: { type: string }
+        ttl: { type: integer }
+        comment: { type: string }
+
+    RecordMX:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        mail_exchanger: { type: string }
+        preference: { type: integer }
+        view: { type: string }
+        ttl: { type: integer }
+
+    RecordTXT:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        text: { type: string }
+        view: { type: string }
+        ttl: { type: integer }
+
+    RecordSRV:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        target: { type: string }
+        port: { type: integer }
+        priority: { type: integer }
+        weight: { type: integer }
+        view: { type: string }
+        ttl: { type: integer }
+
+    NetworkView:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        is_default: { type: boolean }
+        comment: { type: string }
+        extattrs: { $ref: "#/components/schemas/ExtAttrs" }
+
+    Network:
+      type: object
+      properties:
+        _ref: { type: string }
+        network: { type: string }
+        network_view: { type: string }
+        comment: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+        extattrs: { $ref: "#/components/schemas/ExtAttrs" }
+
+    NetworkContainer:
+      type: object
+      properties:
+        _ref: { type: string }
+        network: { type: string }
+        network_view: { type: string }
+        comment: { type: string }
+        extattrs: { $ref: "#/components/schemas/ExtAttrs" }
+
+    IPv4Address:
+      type: object
+      properties:
+        _ref: { type: string }
+        ip_address: { type: string }
+        network: { type: string }
+        network_view: { type: string }
+        status:
+          type: string
+          enum: [USED, UNUSED, ACTIVE, MATCH, UNMATCHED]
+        types:
+          type: array
+          items: { type: string }
+        names:
+          type: array
+          items: { type: string }
+
+    FixedAddress:
+      type: object
+      properties:
+        _ref: { type: string }
+        ipv4addr: { type: string }
+        mac: { type: string }
+        name: { type: string }
+        network_view: { type: string }
+        comment: { type: string }
+        extattrs: { $ref: "#/components/schemas/ExtAttrs" }
+
+    Range:
+      type: object
+      properties:
+        _ref: { type: string }
+        start_addr: { type: string }
+        end_addr: { type: string }
+        network: { type: string }
+        network_view: { type: string }
+        comment: { type: string }
+
+    Lease:
+      type: object
+      properties:
+        _ref: { type: string }
+        address: { type: string }
+        binding_state:
+          type: string
+          enum: [ACTIVE, FREE, EXPIRED, RELEASED, RESET, BACKUP, ABANDONED]
+        hardware: { type: string }
+        client_hostname: { type: string }
+        starts: { type: string }
+        ends: { type: string }
+
+    IPv6Network:
+      type: object
+      properties:
+        _ref: { type: string }
+        network: { type: string }
+        network_view: { type: string }
+        comment: { type: string }
+        extattrs: { $ref: "#/components/schemas/ExtAttrs" }
+
+    IPv6Address:
+      type: object
+      properties:
+        _ref: { type: string }
+        ip_address: { type: string }
+        network: { type: string }
+        network_view: { type: string }
+        status: { type: string }
+        types:
+          type: array
+          items: { type: string }
+        names:
+          type: array
+          items: { type: string }
+
+    IPv6FixedAddress:
+      type: object
+      properties:
+        _ref: { type: string }
+        ipv6addr: { type: string }
+        duid: { type: string }
+        name: { type: string }
+        network_view: { type: string }
+        comment: { type: string }
+
+    IPv6Range:
+      type: object
+      properties:
+        _ref: { type: string }
+        start_addr: { type: string }
+        end_addr: { type: string }
+        network: { type: string }
+        network_view: { type: string }
+        comment: { type: string }
+
+    Grid:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+        version: { type: string }
+
+    Site:
+      type: object
+      properties:
+        site_id: { type: string }
+        name: { type: string }
+        location: { type: string }
+        region: { type: string }
+        network_container: { type: string }
+        comment: { type: string }
+
+    SiteSummary:
+      type: object
+      properties:
+        site_id: { type: string }
+        total_networks: { type: integer }
+        used_ips: { type: integer }
+        free_ips: { type: integer }
+        utilization_pct: { type: number }
+
+    SearchResult:
+      type: object
+      properties:
+        _ref: { type: string }
+        name: { type: string }
+
+paths:
+  # ── Health ───────────────────────────────────────────────
+  /health:
+    get:
+      operationId: health
+      summary: Health check (lab mock extension, not standard WAPI)
+      description: >
+        Custom extension of the lab mock server, not part of the standard
+        Infoblox WAPI. Served at the server root (/health), outside the
+        /wapi/v2.12 base path.
+      tags: [system]
+      security: []
+      responses:
+        "200": { description: OK }
+
+  # ── Grid ─────────────────────────────────────────────────
+  /grid:
+    get:
+      operationId: grid_read
+      summary: Get Grid information
+      tags: [grid]
+      responses:
+        "200":
+          description: Grid info
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Grid" }
+
+  # ── Global search ────────────────────────────────────────
+  /search:
+    get:
+      operationId: search
+      summary: Global search across multiple DNS object types
+      description: >
+        Supports search_string (exact), search_string~ (regex),
+        search_string: (case-insensitive). Supported types:
+        record:a, record:aaaa, record:cname, record:host, record:mx,
+        record:txt, record:ptr, record:srv, record:ns, zone_auth,
+        zone_delegated, zone_forward.
+      tags: [search]
+      parameters:
+        - name: search_string
+          in: query
+          schema: { type: string }
+        - name: search_string~
+          in: query
+          schema: { type: string }
+        - name: "search_string:"
+          in: query
+          schema: { type: string }
+        - name: objtype
+          in: query
+          description: Comma-separated list of object types (e.g. "record:a,record:cname").
+          schema: { type: string }
+        - $ref: "#/components/parameters/MaxResults"
+        - $ref: "#/components/parameters/ReturnFields"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SearchResult" }
+
+  # ── Allrecords ───────────────────────────────────────────
+  /allrecords:
+    get:
+      operationId: allrecords
+      summary: List all DNS records (optionally filtered by zone/view)
+      tags: [dns]
+      parameters:
+        - name: zone
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/MaxResults"
+        - $ref: "#/components/parameters/ReturnFields"
+      responses:
+        "200": { description: List of records }
+
+  # ── View (DNS) ───────────────────────────────────────────
+  /view:
+    get:
+      operationId: view_list
+      summary: List DNS views
+      tags: [dns-view]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: network_view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/ReturnFieldsPlus"
+        - $ref: "#/components/parameters/MaxResults"
+        - $ref: "#/components/parameters/Paging"
+        - $ref: "#/components/parameters/ReturnAsObject"
+        - $ref: "#/components/parameters/PageId"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/View" }
+
+    post:
+      operationId: view_create
+      summary: Create DNS view
+      tags: [dns-view]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/View" }
+      responses:
+        "201": { description: Created (returns _ref as a string) }
+
+  /view/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: view_read
+      summary: Get DNS view
+      tags: [dns-view]
+      responses:
+        "200":
+          description: View
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/View" }
+    put:
+      operationId: view_update
+      summary: Replace DNS view (full PUT)
+      tags: [dns-view]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/View" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: view_patch
+      summary: Partially update DNS view
+      tags: [dns-view]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/View" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: view_delete
+      summary: Delete DNS view
+      tags: [dns-view]
+      responses:
+        "200": { description: Deleted }
+
+  # ── zone_auth ────────────────────────────────────────────
+  /zone_auth:
+    get:
+      operationId: zone_auth_list
+      summary: List authoritative zones
+      tags: [zone_auth]
+      parameters:
+        - name: fqdn
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - name: zone_format
+          in: query
+          schema: { type: string, enum: [FORWARD, IPV4, IPV6] }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/ReturnFieldsPlus"
+        - $ref: "#/components/parameters/MaxResults"
+        - $ref: "#/components/parameters/Paging"
+        - $ref: "#/components/parameters/ReturnAsObject"
+        - $ref: "#/components/parameters/PageId"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ZoneAuth" }
+    post:
+      operationId: zone_auth_create
+      summary: Create authoritative zone
+      tags: [zone_auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ZoneAuth" }
+      responses:
+        "201": { description: Created }
+
+  /zone_auth/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: zone_auth_read
+      summary: Get authoritative zone
+      tags: [zone_auth]
+      responses:
+        "200":
+          description: Zone
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ZoneAuth" }
+    put:
+      operationId: zone_auth_update
+      summary: Replace authoritative zone
+      tags: [zone_auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ZoneAuth" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: zone_auth_patch
+      summary: Partially update authoritative zone
+      tags: [zone_auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ZoneAuth" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: zone_auth_delete
+      summary: Delete authoritative zone
+      tags: [zone_auth]
+      responses:
+        "200": { description: Deleted }
+
+  # ── zone_delegated ───────────────────────────────────────
+  /zone_delegated:
+    get:
+      operationId: zone_delegated_list
+      summary: List delegated zones
+      tags: [zone_delegated]
+      parameters:
+        - name: fqdn
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ZoneDelegated" }
+    post:
+      operationId: zone_delegated_create
+      summary: Create delegated zone
+      tags: [zone_delegated]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ZoneDelegated" }
+      responses:
+        "201": { description: Created }
+
+  /zone_delegated/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: zone_delegated_read
+      summary: Get delegated zone
+      tags: [zone_delegated]
+      responses:
+        "200":
+          description: Zone
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ZoneDelegated" }
+    put:
+      operationId: zone_delegated_update
+      summary: Replace delegated zone
+      tags: [zone_delegated]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ZoneDelegated" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: zone_delegated_patch
+      summary: Partially update delegated zone
+      tags: [zone_delegated]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ZoneDelegated" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: zone_delegated_delete
+      summary: Delete delegated zone
+      tags: [zone_delegated]
+      responses:
+        "200": { description: Deleted }
+
+  # ── zone_forward ─────────────────────────────────────────
+  /zone_forward:
+    get:
+      operationId: zone_forward_list
+      summary: List forward zones
+      tags: [zone_forward]
+      parameters:
+        - name: fqdn
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ZoneForward" }
+    post:
+      operationId: zone_forward_create
+      summary: Create forward zone
+      tags: [zone_forward]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ZoneForward" }
+      responses:
+        "201": { description: Created }
+
+  /zone_forward/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: zone_forward_read
+      summary: Get forward zone
+      tags: [zone_forward]
+      responses:
+        "200":
+          description: Zone
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ZoneForward" }
+    put:
+      operationId: zone_forward_update
+      summary: Replace forward zone
+      tags: [zone_forward]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ZoneForward" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: zone_forward_patch
+      summary: Partially update forward zone
+      tags: [zone_forward]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ZoneForward" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: zone_forward_delete
+      summary: Delete forward zone
+      tags: [zone_forward]
+      responses:
+        "200": { description: Deleted }
+
+  # ── record:a ─────────────────────────────────────────────
+  /record:a:
+    get:
+      operationId: record_a_list
+      summary: List A records
+      tags: [record_a]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: ipv4addr
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - name: zone
+          in: query
+          schema: { type: string }
+        - name: comment
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/ReturnFieldsPlus"
+        - $ref: "#/components/parameters/MaxResults"
+        - $ref: "#/components/parameters/Paging"
+        - $ref: "#/components/parameters/ReturnAsObject"
+        - $ref: "#/components/parameters/PageId"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecordA" }
+    post:
+      operationId: record_a_create
+      summary: Create A record
+      tags: [record_a]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordA" }
+      responses:
+        "201": { description: Created }
+
+  /record:a/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: record_a_read
+      summary: Get A record
+      tags: [record_a]
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordA" }
+    put:
+      operationId: record_a_update
+      summary: Replace A record
+      tags: [record_a]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordA" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: record_a_patch
+      summary: Partially update A record
+      tags: [record_a]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordA" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: record_a_delete
+      summary: Delete A record
+      tags: [record_a]
+      responses:
+        "200": { description: Deleted }
+
+  # ── record:aaaa ──────────────────────────────────────────
+  /record:aaaa:
+    get:
+      operationId: record_aaaa_list
+      summary: List AAAA records
+      tags: [record_aaaa]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: ipv6addr
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecordAAAA" }
+    post:
+      operationId: record_aaaa_create
+      summary: Create AAAA record
+      tags: [record_aaaa]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordAAAA" }
+      responses:
+        "201": { description: Created }
+
+  /record:aaaa/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: record_aaaa_read
+      summary: Get AAAA record
+      tags: [record_aaaa]
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordAAAA" }
+    put:
+      operationId: record_aaaa_update
+      summary: Replace AAAA record
+      tags: [record_aaaa]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordAAAA" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: record_aaaa_patch
+      summary: Partially update AAAA record
+      tags: [record_aaaa]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordAAAA" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: record_aaaa_delete
+      summary: Delete AAAA record
+      tags: [record_aaaa]
+      responses:
+        "200": { description: Deleted }
+
+  # ── record:cname ─────────────────────────────────────────
+  /record:cname:
+    get:
+      operationId: record_cname_list
+      summary: List CNAME records
+      tags: [record_cname]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: canonical
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecordCNAME" }
+    post:
+      operationId: record_cname_create
+      summary: Create CNAME record
+      tags: [record_cname]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordCNAME" }
+      responses:
+        "201": { description: Created }
+
+  /record:cname/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: record_cname_read
+      summary: Get CNAME record
+      tags: [record_cname]
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordCNAME" }
+    put:
+      operationId: record_cname_update
+      summary: Replace CNAME record
+      tags: [record_cname]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordCNAME" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: record_cname_patch
+      summary: Partially update CNAME record
+      tags: [record_cname]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordCNAME" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: record_cname_delete
+      summary: Delete CNAME record
+      tags: [record_cname]
+      responses:
+        "200": { description: Deleted }
+
+  # ── record:host ──────────────────────────────────────────
+  /record:host:
+    get:
+      operationId: record_host_list
+      summary: List Host records
+      tags: [record_host]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: ipv4addr
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/ReturnFieldsPlus"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecordHost" }
+    post:
+      operationId: record_host_create
+      summary: Create Host record (multiple IPs)
+      tags: [record_host]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordHost" }
+      responses:
+        "201": { description: Created }
+
+  /record:host/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: record_host_read
+      summary: Get Host record
+      tags: [record_host]
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordHost" }
+    put:
+      operationId: record_host_update
+      summary: Replace Host record
+      tags: [record_host]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordHost" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: record_host_patch
+      summary: Partially update Host record
+      tags: [record_host]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordHost" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: record_host_delete
+      summary: Delete Host record
+      tags: [record_host]
+      responses:
+        "200": { description: Deleted }
+
+  # ── record:ns ────────────────────────────────────────────
+  /record:ns:
+    get:
+      operationId: record_ns_list
+      summary: List NS records
+      tags: [record_ns]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: nameserver
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecordNS" }
+    post:
+      operationId: record_ns_create
+      summary: Create NS record
+      tags: [record_ns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordNS" }
+      responses:
+        "201": { description: Created }
+
+  /record:ns/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: record_ns_read
+      summary: Get NS record
+      tags: [record_ns]
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordNS" }
+    put:
+      operationId: record_ns_update
+      summary: Replace NS record
+      tags: [record_ns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordNS" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: record_ns_patch
+      summary: Partially update NS record
+      tags: [record_ns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordNS" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: record_ns_delete
+      summary: Delete NS record
+      tags: [record_ns]
+      responses:
+        "200": { description: Deleted }
+
+  # ── record:ptr ───────────────────────────────────────────
+  /record:ptr:
+    get:
+      operationId: record_ptr_list
+      summary: List PTR records
+      tags: [record_ptr]
+      parameters:
+        - name: ptrdname
+          in: query
+          schema: { type: string }
+        - name: ipv4addr
+          in: query
+          schema: { type: string }
+        - name: ipv6addr
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecordPTR" }
+    post:
+      operationId: record_ptr_create
+      summary: Create PTR record
+      tags: [record_ptr]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordPTR" }
+      responses:
+        "201": { description: Created }
+
+  /record:ptr/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: record_ptr_read
+      summary: Get PTR record
+      tags: [record_ptr]
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordPTR" }
+    put:
+      operationId: record_ptr_update
+      summary: Replace PTR record
+      tags: [record_ptr]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordPTR" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: record_ptr_patch
+      summary: Partially update PTR record
+      tags: [record_ptr]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordPTR" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: record_ptr_delete
+      summary: Delete PTR record
+      tags: [record_ptr]
+      responses:
+        "200": { description: Deleted }
+
+  # ── record:mx ────────────────────────────────────────────
+  /record:mx:
+    get:
+      operationId: record_mx_list
+      summary: List MX records
+      tags: [record_mx]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: mail_exchanger
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecordMX" }
+    post:
+      operationId: record_mx_create
+      summary: Create MX record
+      tags: [record_mx]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordMX" }
+      responses:
+        "201": { description: Created }
+
+  /record:mx/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: record_mx_read
+      summary: Get MX record
+      tags: [record_mx]
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordMX" }
+    put:
+      operationId: record_mx_update
+      summary: Replace MX record
+      tags: [record_mx]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordMX" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: record_mx_patch
+      summary: Partially update MX record
+      tags: [record_mx]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordMX" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: record_mx_delete
+      summary: Delete MX record
+      tags: [record_mx]
+      responses:
+        "200": { description: Deleted }
+
+  # ── record:txt ───────────────────────────────────────────
+  /record:txt:
+    get:
+      operationId: record_txt_list
+      summary: List TXT records
+      tags: [record_txt]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: text
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecordTXT" }
+    post:
+      operationId: record_txt_create
+      summary: Create TXT record
+      tags: [record_txt]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordTXT" }
+      responses:
+        "201": { description: Created }
+
+  /record:txt/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: record_txt_read
+      summary: Get TXT record
+      tags: [record_txt]
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordTXT" }
+    put:
+      operationId: record_txt_update
+      summary: Replace TXT record
+      tags: [record_txt]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordTXT" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: record_txt_patch
+      summary: Partially update TXT record
+      tags: [record_txt]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordTXT" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: record_txt_delete
+      summary: Delete TXT record
+      tags: [record_txt]
+      responses:
+        "200": { description: Deleted }
+
+  # ── record:srv ───────────────────────────────────────────
+  /record:srv:
+    get:
+      operationId: record_srv_list
+      summary: List SRV records
+      tags: [record_srv]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: target
+          in: query
+          schema: { type: string }
+        - name: view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecordSRV" }
+    post:
+      operationId: record_srv_create
+      summary: Create SRV record
+      tags: [record_srv]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordSRV" }
+      responses:
+        "201": { description: Created }
+
+  /record:srv/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: record_srv_read
+      summary: Get SRV record
+      tags: [record_srv]
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordSRV" }
+    put:
+      operationId: record_srv_update
+      summary: Replace SRV record
+      tags: [record_srv]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordSRV" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: record_srv_patch
+      summary: Partially update SRV record
+      tags: [record_srv]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordSRV" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: record_srv_delete
+      summary: Delete SRV record
+      tags: [record_srv]
+      responses:
+        "200": { description: Deleted }
+
+  # ── networkview ──────────────────────────────────────────
+  /networkview:
+    get:
+      operationId: networkview_list
+      summary: List network views (IPAM)
+      tags: [networkview]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/NetworkView" }
+    post:
+      operationId: networkview_create
+      summary: Create network view
+      tags: [networkview]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetworkView" }
+      responses:
+        "201": { description: Created }
+
+  /networkview/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: networkview_read
+      summary: Get network view
+      tags: [networkview]
+      responses:
+        "200":
+          description: Network view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetworkView" }
+    put:
+      operationId: networkview_update
+      summary: Replace network view
+      tags: [networkview]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetworkView" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: networkview_patch
+      summary: Partially update network view
+      tags: [networkview]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetworkView" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: networkview_delete
+      summary: Delete network view
+      tags: [networkview]
+      responses:
+        "200": { description: Deleted }
+
+  # ── network (IPv4) ───────────────────────────────────────
+  /network:
+    get:
+      operationId: network_list
+      summary: List IPv4 networks
+      tags: [network]
+      parameters:
+        - name: network
+          in: query
+          schema: { type: string }
+        - name: network_view
+          in: query
+          schema: { type: string }
+        - name: comment
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/ReturnFieldsPlus"
+        - $ref: "#/components/parameters/MaxResults"
+        - $ref: "#/components/parameters/Paging"
+        - $ref: "#/components/parameters/ReturnAsObject"
+        - $ref: "#/components/parameters/PageId"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Network" }
+    post:
+      operationId: network_create
+      summary: Create IPv4 network
+      tags: [network]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Network" }
+      responses:
+        "201": { description: Created }
+
+  /network/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: network_read
+      summary: Get IPv4 network
+      tags: [network]
+      responses:
+        "200":
+          description: Network
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Network" }
+    put:
+      operationId: network_update
+      summary: Replace IPv4 network
+      tags: [network]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Network" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: network_patch
+      summary: Partially update IPv4 network
+      tags: [network]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Network" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: network_delete
+      summary: Delete IPv4 network
+      tags: [network]
+      responses:
+        "200": { description: Deleted }
+    post:
+      operationId: network_next_available_ip
+      summary: Get the next available IP address(es) in the network
+      description: Function call invoked with ?_function=next_available_ip
+      tags: [network]
+      parameters:
+        - name: _function
+          in: query
+          required: true
+          schema: { type: string, enum: [next_available_ip] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NextAvailableIpRequest" }
+      responses:
+        "200":
+          description: List of IPs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ips:
+                    type: array
+                    items: { type: string }
+
+  # ── networkcontainer ─────────────────────────────────────
+  /networkcontainer:
+    get:
+      operationId: networkcontainer_list
+      summary: List network containers
+      tags: [networkcontainer]
+      parameters:
+        - name: network
+          in: query
+          schema: { type: string }
+        - name: network_view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/NetworkContainer" }
+    post:
+      operationId: networkcontainer_create
+      summary: Create network container
+      tags: [networkcontainer]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetworkContainer" }
+      responses:
+        "201": { description: Created }
+
+  /networkcontainer/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: networkcontainer_read
+      summary: Get network container
+      tags: [networkcontainer]
+      responses:
+        "200":
+          description: Container
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetworkContainer" }
+    delete:
+      operationId: networkcontainer_delete
+      summary: Delete network container
+      tags: [networkcontainer]
+      responses:
+        "200": { description: Deleted }
+    post:
+      operationId: networkcontainer_next_available_network
+      summary: Get the next available subnet(s) in the container
+      description: Function call invoked with ?_function=next_available_network
+      tags: [networkcontainer]
+      parameters:
+        - name: _function
+          in: query
+          required: true
+          schema: { type: string, enum: [next_available_network] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NextAvailableNetworkRequest" }
+      responses:
+        "200":
+          description: List of networks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  networks:
+                    type: array
+                    items: { type: string }
+
+  # ── ipv4address (read-only) ──────────────────────────────
+  /ipv4address:
+    get:
+      operationId: ipv4address_list
+      summary: List IPv4 addresses (computed status)
+      tags: [ipv4address]
+      parameters:
+        - name: network
+          in: query
+          schema: { type: string }
+        - name: network_view
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [USED, UNUSED, ACTIVE, MATCH, UNMATCHED] }
+        - name: ip_address
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/IPv4Address" }
+
+  /ipv4address/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: ipv4address_read
+      summary: Get IPv4 address
+      tags: [ipv4address]
+      responses:
+        "200":
+          description: IP
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPv4Address" }
+
+  # ── fixedaddress ─────────────────────────────────────────
+  /fixedaddress:
+    get:
+      operationId: fixedaddress_list
+      summary: List DHCP reservations (IPv4)
+      tags: [fixedaddress]
+      parameters:
+        - name: ipv4addr
+          in: query
+          schema: { type: string }
+        - name: mac
+          in: query
+          schema: { type: string }
+        - name: network
+          in: query
+          schema: { type: string }
+        - name: network_view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FixedAddress" }
+    post:
+      operationId: fixedaddress_create
+      summary: Create DHCP reservation
+      tags: [fixedaddress]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FixedAddress" }
+      responses:
+        "201": { description: Created }
+
+  /fixedaddress/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: fixedaddress_read
+      summary: Get DHCP reservation
+      tags: [fixedaddress]
+      responses:
+        "200":
+          description: Reservation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FixedAddress" }
+    put:
+      operationId: fixedaddress_update
+      summary: Replace DHCP reservation
+      tags: [fixedaddress]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FixedAddress" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: fixedaddress_patch
+      summary: Partially update DHCP reservation
+      tags: [fixedaddress]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FixedAddress" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: fixedaddress_delete
+      summary: Delete DHCP reservation
+      tags: [fixedaddress]
+      responses:
+        "200": { description: Deleted }
+
+  # ── range (IPv4) ─────────────────────────────────────────
+  /range:
+    get:
+      operationId: range_list
+      summary: List DHCP ranges
+      tags: [range]
+      parameters:
+        - name: network
+          in: query
+          schema: { type: string }
+        - name: network_view
+          in: query
+          schema: { type: string }
+        - name: start_addr
+          in: query
+          schema: { type: string }
+        - name: end_addr
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Range" }
+    post:
+      operationId: range_create
+      summary: Create DHCP range
+      tags: [range]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Range" }
+      responses:
+        "201": { description: Created }
+
+  /range/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: range_read
+      summary: Get DHCP range
+      tags: [range]
+      responses:
+        "200":
+          description: Range
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Range" }
+    put:
+      operationId: range_update
+      summary: Replace DHCP range
+      tags: [range]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Range" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: range_patch
+      summary: Partially update DHCP range
+      tags: [range]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Range" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: range_delete
+      summary: Delete DHCP range
+      tags: [range]
+      responses:
+        "200": { description: Deleted }
+
+  # ── lease (read-only) ────────────────────────────────────
+  /lease:
+    get:
+      operationId: lease_list
+      summary: List DHCP leases
+      tags: [lease]
+      parameters:
+        - name: address
+          in: query
+          schema: { type: string }
+        - name: binding_state
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, FREE, EXPIRED, RELEASED, RESET, BACKUP, ABANDONED]
+        - name: hardware
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Lease" }
+
+  # ── ipv6network ──────────────────────────────────────────
+  /ipv6network:
+    get:
+      operationId: ipv6network_list
+      summary: List IPv6 networks
+      tags: [ipv6network]
+      parameters:
+        - name: network
+          in: query
+          schema: { type: string }
+        - name: network_view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/IPv6Network" }
+    post:
+      operationId: ipv6network_create
+      summary: Create IPv6 network
+      tags: [ipv6network]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPv6Network" }
+      responses:
+        "201": { description: Created }
+
+  /ipv6network/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: ipv6network_read
+      summary: Get IPv6 network
+      tags: [ipv6network]
+      responses:
+        "200":
+          description: Network
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPv6Network" }
+    put:
+      operationId: ipv6network_update
+      summary: Replace IPv6 network
+      tags: [ipv6network]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPv6Network" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: ipv6network_patch
+      summary: Partially update IPv6 network
+      tags: [ipv6network]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPv6Network" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: ipv6network_delete
+      summary: Delete IPv6 network
+      tags: [ipv6network]
+      responses:
+        "200": { description: Deleted }
+
+  # ── ipv6address (read-only) ──────────────────────────────
+  /ipv6address:
+    get:
+      operationId: ipv6address_list
+      summary: List IPv6 addresses (computed status)
+      tags: [ipv6address]
+      parameters:
+        - name: network
+          in: query
+          schema: { type: string }
+        - name: network_view
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/IPv6Address" }
+
+  /ipv6address/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: ipv6address_read
+      summary: Get IPv6 address
+      tags: [ipv6address]
+      responses:
+        "200":
+          description: IP
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPv6Address" }
+
+  # ── ipv6fixedaddress ─────────────────────────────────────
+  /ipv6fixedaddress:
+    get:
+      operationId: ipv6fixedaddress_list
+      summary: List DHCPv6 reservations
+      tags: [ipv6fixedaddress]
+      parameters:
+        - name: ipv6addr
+          in: query
+          schema: { type: string }
+        - name: duid
+          in: query
+          schema: { type: string }
+        - name: network_view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/IPv6FixedAddress" }
+    post:
+      operationId: ipv6fixedaddress_create
+      summary: Create DHCPv6 reservation
+      tags: [ipv6fixedaddress]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPv6FixedAddress" }
+      responses:
+        "201": { description: Created }
+
+  /ipv6fixedaddress/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: ipv6fixedaddress_read
+      summary: Get DHCPv6 reservation
+      tags: [ipv6fixedaddress]
+      responses:
+        "200":
+          description: Reservation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPv6FixedAddress" }
+    put:
+      operationId: ipv6fixedaddress_update
+      summary: Replace DHCPv6 reservation
+      tags: [ipv6fixedaddress]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPv6FixedAddress" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: ipv6fixedaddress_patch
+      summary: Partially update DHCPv6 reservation
+      tags: [ipv6fixedaddress]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPv6FixedAddress" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: ipv6fixedaddress_delete
+      summary: Delete DHCPv6 reservation
+      tags: [ipv6fixedaddress]
+      responses:
+        "200": { description: Deleted }
+
+  # ── ipv6range ────────────────────────────────────────────
+  /ipv6range:
+    get:
+      operationId: ipv6range_list
+      summary: List DHCPv6 ranges
+      tags: [ipv6range]
+      parameters:
+        - name: network
+          in: query
+          schema: { type: string }
+        - name: network_view
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/ReturnFields"
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/IPv6Range" }
+    post:
+      operationId: ipv6range_create
+      summary: Create DHCPv6 range
+      tags: [ipv6range]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPv6Range" }
+      responses:
+        "201": { description: Created }
+
+  /ipv6range/{_ref}:
+    parameters:
+      - $ref: "#/components/parameters/Ref"
+    get:
+      operationId: ipv6range_read
+      summary: Get DHCPv6 range
+      tags: [ipv6range]
+      responses:
+        "200":
+          description: Range
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IPv6Range" }
+    put:
+      operationId: ipv6range_update
+      summary: Replace DHCPv6 range
+      tags: [ipv6range]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPv6Range" }
+      responses:
+        "200": { description: Updated }
+    patch:
+      operationId: ipv6range_patch
+      summary: Partially update DHCPv6 range
+      tags: [ipv6range]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IPv6Range" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: ipv6range_delete
+      summary: Delete DHCPv6 range
+      tags: [ipv6range]
+      responses:
+        "200": { description: Deleted }
+
+  # ── Sites (custom extension of the lab mock, not standard WAPI) ──
+  /site:
+    get:
+      operationId: site_list
+      summary: List sites/stores
+      description: Custom extension of the lab mock, not standard WAPI.
+      tags: [site]
+      parameters:
+        - name: region
+          in: query
+          schema: { type: string }
+        - name: location
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/MaxResults"
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Site" }
+    post:
+      operationId: site_create
+      summary: Create site/store
+      description: Custom extension of the lab mock, not standard WAPI.
+      tags: [site]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Site" }
+      responses:
+        "201": { description: Created }
+
+  /site/{site_id}:
+    parameters:
+      - name: site_id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: site_read
+      summary: Get site
+      description: Custom extension of the lab mock, not standard WAPI.
+      tags: [site]
+      responses:
+        "200":
+          description: Site
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Site" }
+    put:
+      operationId: site_update
+      summary: Update site (full PUT; PATCH is not supported)
+      description: Custom extension of the lab mock, not standard WAPI.
+      tags: [site]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Site" }
+      responses:
+        "200": { description: Updated }
+    delete:
+      operationId: site_delete
+      summary: Delete site
+      description: Custom extension of the lab mock, not standard WAPI.
+      tags: [site]
+      responses:
+        "200": { description: Deleted }
+
+  /site/{site_id}/provision:
+    parameters:
+      - name: site_id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: site_provision
+      summary: Automatically provision subnets in a site
+      description: Custom extension of the lab mock, not standard WAPI.
+      tags: [site]
+      parameters:
+        - name: subnet_cidr
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: num_subnets
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Provisioned subnets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  provisioned:
+                    type: array
+                    items: { type: string }
+
+  /site/{site_id}/summary:
+    parameters:
+      - name: site_id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: site_summary
+      summary: Get site utilization summary
+      description: Custom extension of the lab mock, not standard WAPI.
+      tags: [site]
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteSummary" }

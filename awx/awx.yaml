@@ -1,0 +1,2691 @@
+openapi: "3.0.3"
+info:
+  title: AWX / Ansible Tower API
+  description: >
+    AWX REST API. Paths are relative to the configured base URL
+    (e.g., https://awx.example.com/api/v2). All endpoints use trailing slashes.
+  version: "2.0"
+
+paths:
+  # ── Health & Config ──────────────────────────────────────
+  /ping/:
+    get:
+      operationId: ping
+      summary: Check AWX server health
+      tags: [system]
+      responses:
+        "200":
+          description: Server health
+
+  /config/:
+    get:
+      operationId: config
+      summary: Get server configuration
+      tags: [system]
+      responses:
+        "200":
+          description: Server config
+
+  /me/:
+    get:
+      operationId: me
+      summary: Get current user info
+      tags: [system]
+      responses:
+        "200":
+          description: Current user
+
+  /dashboard/:
+    get:
+      operationId: dashboard
+      summary: Get dashboard summary
+      tags: [system]
+      responses:
+        "200":
+          description: Dashboard data
+
+  # ── Organizations ────────────────────────────────────────
+  /organizations/:
+    get:
+      operationId: organizations_list
+      summary: List organizations
+      tags: [organizations]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Organization list
+
+    post:
+      operationId: organizations_create
+      summary: Create an organization
+      tags: [organizations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        "201":
+          description: Created
+
+  # ── Projects ─────────────────────────────────────────────
+  /projects/:
+    get:
+      operationId: projects_list
+      summary: List projects
+      tags: [projects]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: organization
+          in: query
+          schema: { type: integer }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: order_by
+          in: query
+          schema: { type: string }
+        - name: created__gte
+          in: query
+          schema: { type: string }
+        - name: created__lte
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Project list
+
+    post:
+      operationId: projects_create
+      summary: Create a project
+      tags: [projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                organization: { type: integer }
+                scm_type: { type: string }
+                scm_url: { type: string }
+                scm_branch: { type: string }
+                scm_credential: { type: integer }
+                description: { type: string }
+      responses:
+        "201":
+          description: Created
+
+  /projects/{id}/:
+    get:
+      operationId: projects_read
+      summary: Get project details
+      tags: [projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Project details
+
+    patch:
+      operationId: projects_update
+      summary: Update a project
+      tags: [projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                scm_url: { type: string }
+                scm_branch: { type: string }
+                scm_credential: { type: integer }
+                description: { type: string }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: projects_delete
+      summary: Delete a project
+      tags: [projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/update/:
+    post:
+      operationId: projects_sync
+      summary: Trigger project SCM sync
+      tags: [projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Sync started
+
+  # ── Inventories ──────────────────────────────────────────
+  /inventories/:
+    get:
+      operationId: inventories_list
+      summary: List inventories
+      tags: [inventories]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: organization
+          in: query
+          schema: { type: integer }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: order_by
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Inventory list
+
+    post:
+      operationId: inventories_create
+      summary: Create an inventory
+      tags: [inventories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                organization: { type: integer }
+                description: { type: string }
+      responses:
+        "201":
+          description: Created
+
+  /inventories/{id}/:
+    get:
+      operationId: inventories_read
+      summary: Get inventory details
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Inventory details
+
+    patch:
+      operationId: inventories_update
+      summary: Update an inventory
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: inventories_delete
+      summary: Delete an inventory
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Hosts ────────────────────────────────────────────────
+  /hosts/:
+    get:
+      operationId: hosts_list
+      summary: List hosts
+      tags: [hosts]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: inventory
+          in: query
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Host list
+
+    post:
+      operationId: hosts_create
+      summary: Create a host
+      tags: [hosts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                inventory: { type: integer }
+                description: { type: string }
+                variables: { type: string }
+                enabled: { type: boolean }
+      responses:
+        "201":
+          description: Created
+
+  /hosts/{id}/:
+    get:
+      operationId: hosts_read
+      summary: Get host details
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Host details
+
+    patch:
+      operationId: hosts_update
+      summary: Update a host
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                variables: { type: string }
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: hosts_delete
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Groups ───────────────────────────────────────────────
+  /groups/:
+    get:
+      operationId: groups_list
+      tags: [hosts]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: inventory
+          in: query
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Group list
+
+    post:
+      operationId: groups_create
+      tags: [hosts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                inventory: { type: integer }
+                description: { type: string }
+                variables: { type: string }
+      responses:
+        "201":
+          description: Created
+
+  /groups/{id}/:
+    get:
+      operationId: groups_read
+      summary: Get group details
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Group details
+
+    patch:
+      operationId: groups_update
+      summary: Update a group
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                variables: { type: string }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: groups_delete
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  /groups/{id}/hosts/:
+    get:
+      operationId: groups_hosts_list
+      summary: List hosts in a group
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Host list
+
+    post:
+      operationId: groups_add_host
+      summary: Add host to group
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: integer }
+      responses:
+        "204":
+          description: Host added
+
+  # ── Credentials ──────────────────────────────────────────
+  /credentials/:
+    get:
+      operationId: credentials_list
+      tags: [credentials]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: credential_type
+          in: query
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Credential list
+
+    post:
+      operationId: credentials_create
+      tags: [credentials]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                credential_type: { type: integer }
+                organization: { type: integer }
+                description: { type: string }
+                inputs: { type: object }
+      responses:
+        "201":
+          description: Created
+
+  /credentials/{id}/:
+    get:
+      operationId: credentials_read
+      summary: Get credential details
+      tags: [credentials]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Credential details
+
+    patch:
+      operationId: credentials_update
+      tags: [credentials]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                inputs: { type: object }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: credentials_delete
+      tags: [credentials]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  /credential_types/:
+    get:
+      operationId: credential_types_list
+      tags: [credentials]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Credential type list
+
+  # ── Job Templates ────────────────────────────────────────
+  /job_templates/:
+    get:
+      operationId: job_templates_list
+      tags: [job_templates]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: project
+          in: query
+          schema: { type: integer }
+        - name: inventory
+          in: query
+          schema: { type: integer }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: order_by
+          in: query
+          schema: { type: string }
+        - name: created__gte
+          in: query
+          schema: { type: string }
+        - name: created__lte
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Template list
+
+    post:
+      operationId: job_templates_create
+      tags: [job_templates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                project: { type: integer }
+                inventory: { type: integer }
+                playbook: { type: string }
+                execution_environment: { type: integer }
+                description: { type: string }
+                extra_vars: { type: string }
+      responses:
+        "201":
+          description: Created
+
+  /job_templates/{id}/:
+    get:
+      operationId: job_templates_read
+      summary: Get job template details
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Job template details
+
+    patch:
+      operationId: job_templates_update
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                playbook: { type: string }
+                inventory: { type: integer }
+                execution_environment: { type: integer }
+                extra_vars: { type: string }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: job_templates_delete
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  /job_templates/{id}/launch/:
+    get:
+      operationId: job_templates_launch_schema
+      summary: Get launch schema (required/passed vars)
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Launch metadata (ask_variables_on_launch, passwords_needed_to_start, etc.)
+
+    post:
+      operationId: job_templates_launch
+      summary: Launch a job template
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                extra_vars: { type: object }
+                limit: { type: string }
+      responses:
+        "201":
+          description: Job launched
+
+  /job_templates/{id}/credentials/:
+    post:
+      operationId: job_templates_associate_credential
+      summary: Associate credential to template
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: integer }
+                disassociate: { type: boolean }
+      responses:
+        "204":
+          description: Done
+
+  # ── Jobs ─────────────────────────────────────────────────
+  /jobs/:
+    get:
+      operationId: jobs_list
+      tags: [jobs]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: job_template
+          in: query
+          schema: { type: integer }
+        - name: inventory
+          in: query
+          schema: { type: integer }
+        - name: project
+          in: query
+          schema: { type: integer }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: order_by
+          in: query
+          schema: { type: string }
+        - name: started__gte
+          in: query
+          schema: { type: string }
+        - name: started__lte
+          in: query
+          schema: { type: string }
+        - name: created__gte
+          in: query
+          schema: { type: string }
+        - name: finished__gte
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Job list
+
+  /jobs/{id}/:
+    get:
+      operationId: jobs_read
+      tags: [jobs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Job details
+
+  /jobs/{id}/stdout/:
+    get:
+      operationId: jobs_stdout
+      summary: Get job output
+      tags: [jobs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: format
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Job stdout
+
+  /jobs/{id}/job_events/:
+    get:
+      operationId: jobs_events
+      summary: Get job events
+      tags: [jobs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: event
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 200 }
+      responses:
+        "200":
+          description: Job events
+
+  /jobs/{id}/cancel/:
+    post:
+      operationId: jobs_cancel
+      tags: [jobs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Cancel initiated
+
+  /jobs/{id}/relaunch/:
+    post:
+      operationId: jobs_relaunch
+      tags: [jobs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "201":
+          description: Relaunched
+
+  # ── Workflow Job Templates ───────────────────────────────
+  /workflow_job_templates/:
+    get:
+      operationId: workflow_job_templates_list
+      tags: [workflows]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: List
+
+    post:
+      operationId: workflow_job_templates_create
+      tags: [workflows]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                organization: { type: integer }
+                description: { type: string }
+      responses:
+        "201":
+          description: Created
+
+  /workflow_job_templates/{id}/:
+    get:
+      operationId: workflow_job_templates_read
+      summary: Get workflow job template details
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Workflow job template details
+
+    patch:
+      operationId: workflow_job_templates_update
+      summary: Update a workflow job template
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: workflow_job_templates_delete
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  /workflow_job_templates/{id}/launch/:
+    post:
+      operationId: workflow_job_templates_launch
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                extra_vars: { type: object }
+      responses:
+        "201":
+          description: Launched
+
+  # ── Schedules ────────────────────────────────────────────
+  /schedules/:
+    get:
+      operationId: schedules_list
+      tags: [schedules]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Schedule list
+
+    post:
+      operationId: schedules_create
+      tags: [schedules]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                unified_job_template: { type: integer }
+                rrule: { type: string }
+                enabled: { type: boolean }
+      responses:
+        "201":
+          description: Created
+
+  /schedules/{id}/:
+    get:
+      operationId: schedules_read
+      summary: Get schedule details
+      tags: [schedules]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Schedule details
+
+    patch:
+      operationId: schedules_update
+      tags: [schedules]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                rrule: { type: string }
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: schedules_delete
+      tags: [schedules]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Inventory Sources ────────────────────────────────────
+  /inventory_sources/:
+    get:
+      operationId: inventory_sources_list
+      tags: [inventories]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: inventory
+          in: query
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Source list
+
+    post:
+      operationId: inventory_sources_create
+      tags: [inventories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                inventory: { type: integer }
+                source: { type: string }
+                source_project: { type: integer }
+                source_path: { type: string }
+                credential: { type: integer }
+                execution_environment: { type: integer }
+                overwrite: { type: boolean }
+                update_on_launch: { type: boolean }
+                update_on_project_update: { type: boolean }
+      responses:
+        "201":
+          description: Created
+
+  /inventory_sources/{id}/:
+    get:
+      operationId: inventory_sources_read
+      summary: Get inventory source details
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Inventory source details
+
+    patch:
+      operationId: inventory_sources_update
+      summary: Update an inventory source
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                source: { type: string }
+                source_path: { type: string }
+                credential: { type: integer }
+                overwrite: { type: boolean }
+                update_on_launch: { type: boolean }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: inventory_sources_delete
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  /inventory_sources/{id}/update/:
+    post:
+      operationId: inventory_sources_sync
+      summary: Sync inventory source
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Sync started
+
+  # ── Users & Teams ────────────────────────────────────────
+  /users/:
+    get:
+      operationId: users_list
+      tags: [access]
+      parameters:
+        - name: username
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: User list
+
+    post:
+      operationId: users_create
+      tags: [access]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+                email: { type: string }
+                first_name: { type: string }
+                last_name: { type: string }
+      responses:
+        "201":
+          description: Created
+
+  /teams/:
+    get:
+      operationId: teams_list
+      tags: [access]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Team list
+
+    post:
+      operationId: teams_create
+      tags: [access]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                organization: { type: integer }
+      responses:
+        "201":
+          description: Created
+
+  # ── Ad Hoc Commands ──────────────────────────────────────
+  /ad_hoc_commands/:
+    get:
+      operationId: ad_hoc_commands_list
+      tags: [commands]
+      parameters:
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Command list
+
+    post:
+      operationId: ad_hoc_commands_run
+      tags: [commands]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inventory: { type: integer }
+                credential: { type: integer }
+                module_name: { type: string }
+                module_args: { type: string }
+                limit: { type: string }
+      responses:
+        "201":
+          description: Command launched
+
+  # ── Execution Environments ───────────────────────────────
+  /execution_environments/:
+    get:
+      operationId: execution_environments_list
+      tags: [system]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: EE list
+
+    post:
+      operationId: execution_environments_create
+      tags: [system]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                image: { type: string }
+                pull: { type: string }
+                credential: { type: integer }
+      responses:
+        "201":
+          description: Created
+
+  /execution_environments/{id}/:
+    get:
+      operationId: execution_environments_read
+      summary: Get execution environment details
+      tags: [system]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: EE details
+
+    patch:
+      operationId: execution_environments_update
+      summary: Update an execution environment
+      tags: [system]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                image: { type: string }
+                pull: { type: string }
+                credential: { type: integer }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: execution_environments_delete
+      tags: [system]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Misc ─────────────────────────────────────────────────
+  /notification_templates/:
+    get:
+      operationId: notification_templates_list
+      tags: [system]
+      responses:
+        "200":
+          description: List
+
+    post:
+      operationId: notification_templates_create
+      summary: Create a notification template
+      tags: [system]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                organization: { type: integer }
+                notification_type: { type: string }
+                notification_configuration: { type: object }
+      responses:
+        "201":
+          description: Created
+
+  /labels/:
+    get:
+      operationId: labels_list
+      tags: [system]
+      responses:
+        "200":
+          description: List
+
+    post:
+      operationId: labels_create
+      summary: Create a label
+      tags: [system]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                organization: { type: integer }
+      responses:
+        "201":
+          description: Created
+
+  /instances/:
+    get:
+      operationId: instances_list
+      tags: [system]
+      responses:
+        "200":
+          description: List
+
+  /instance_groups/:
+    get:
+      operationId: instance_groups_list
+      tags: [system]
+      responses:
+        "200":
+          description: List
+
+  /activity_stream/:
+    get:
+      operationId: activity_stream_list
+      tags: [system]
+      parameters:
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Activity list
+
+  /unified_jobs/:
+    get:
+      operationId: unified_jobs_list
+      tags: [jobs]
+      parameters:
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: List
+
+  /unified_job_templates/:
+    get:
+      operationId: unified_job_templates_list
+      tags: [jobs]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: List
+
+  # ── Organizations {id} (read/patch/delete) ───────────────
+  /organizations/{id}/:
+    get:
+      operationId: organizations_read
+      summary: Get organization details
+      tags: [organizations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Organization details
+
+    patch:
+      operationId: organizations_update
+      tags: [organizations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: organizations_delete
+      tags: [organizations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Project sub-resources ────────────────────────────────
+  /projects/{id}/playbooks/:
+    get:
+      operationId: projects_playbooks
+      summary: List playbook files available in a project (after sync)
+      tags: [projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List of playbook file paths
+
+  /projects/{id}/project_updates/:
+    get:
+      operationId: projects_updates_list
+      summary: List SCM sync runs for a project
+      tags: [projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Project update list
+
+  /project_updates/:
+    get:
+      operationId: project_updates_list
+      summary: List all project SCM sync runs
+      tags: [projects]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: project
+          in: query
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Project update list
+
+  /project_updates/{id}/:
+    get:
+      operationId: project_updates_read
+      summary: Get project update (SCM sync) details
+      tags: [projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Project update details
+
+  /project_updates/{id}/stdout/:
+    get:
+      operationId: project_updates_stdout
+      summary: Get SCM sync stdout
+      tags: [projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: format
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Sync stdout
+
+  /project_updates/{id}/cancel/:
+    post:
+      operationId: project_updates_cancel
+      summary: Cancel a running SCM sync
+      tags: [projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Cancel initiated
+
+  # ── Inventory sub-resources ──────────────────────────────
+  /inventories/{id}/hosts/:
+    get:
+      operationId: inventories_hosts_list
+      summary: List hosts in an inventory
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        "200":
+          description: Host list
+
+  /inventories/{id}/groups/:
+    get:
+      operationId: inventories_groups_list
+      summary: List groups in an inventory
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        "200":
+          description: Group list
+
+  /inventories/{id}/inventory_sources/:
+    get:
+      operationId: inventories_sources_list
+      summary: List inventory sources attached to an inventory
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Inventory source list
+
+  /inventories/{id}/variable_data/:
+    get:
+      operationId: inventories_variable_data_read
+      summary: Get inventory-level variables (YAML/JSON)
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Variables
+
+    put:
+      operationId: inventories_variable_data_update
+      summary: Replace inventory-level variables
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Updated
+
+  /hosts/{id}/variable_data/:
+    get:
+      operationId: hosts_variable_data_read
+      summary: Get host-level variables (YAML/JSON)
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Variables
+
+    put:
+      operationId: hosts_variable_data_update
+      summary: Replace host-level variables
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Updated
+
+  /groups/{id}/children/:
+    get:
+      operationId: groups_children_list
+      summary: List child groups of a group
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Child group list
+
+  # ── Inventory Updates (sync status) ──────────────────────
+  /inventory_updates/:
+    get:
+      operationId: inventory_updates_list
+      summary: List all inventory source sync runs
+      tags: [inventories]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: inventory_source
+          in: query
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Inventory update list
+
+  /inventory_updates/{id}/:
+    get:
+      operationId: inventory_updates_read
+      summary: Get inventory update details
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Inventory update details
+
+  /inventory_updates/{id}/stdout/:
+    get:
+      operationId: inventory_updates_stdout
+      summary: Get inventory sync stdout
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: format
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Sync stdout
+
+  /inventory_updates/{id}/cancel/:
+    post:
+      operationId: inventory_updates_cancel
+      summary: Cancel a running inventory sync
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Cancel initiated
+
+  # ── Job Template sub-resources ───────────────────────────
+  /job_templates/{id}/jobs/:
+    get:
+      operationId: job_templates_jobs_list
+      summary: List jobs executed from a template
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Job list
+
+  /job_templates/{id}/schedules/:
+    get:
+      operationId: job_templates_schedules_list
+      summary: List schedules attached to a template
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Schedule list
+
+  # ── Ad Hoc Commands {id} ────────────────────────────────
+  /ad_hoc_commands/{id}/:
+    get:
+      operationId: ad_hoc_commands_read
+      summary: Get ad hoc command details
+      tags: [commands]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Command details
+
+  /ad_hoc_commands/{id}/stdout/:
+    get:
+      operationId: ad_hoc_commands_stdout
+      summary: Get ad hoc command output
+      tags: [commands]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: format
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Command stdout
+
+  /ad_hoc_commands/{id}/cancel/:
+    post:
+      operationId: ad_hoc_commands_cancel
+      summary: Cancel a running ad hoc command
+      tags: [commands]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Cancel initiated
+
+  # ── Workflow Jobs (executions of workflows) ──────────────
+  /workflow_jobs/:
+    get:
+      operationId: workflow_jobs_list
+      summary: List workflow job executions
+      tags: [workflows]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: workflow_job_template
+          in: query
+          schema: { type: integer }
+        - name: started__gte
+          in: query
+          schema: { type: string }
+        - name: started__lte
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Workflow job list
+
+  /workflow_jobs/{id}/:
+    get:
+      operationId: workflow_jobs_read
+      summary: Get workflow job details
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Workflow job details
+
+  /workflow_jobs/{id}/workflow_nodes/:
+    get:
+      operationId: workflow_jobs_nodes_list
+      summary: List executed DAG nodes of a workflow job
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Node list
+
+  /workflow_jobs/{id}/cancel/:
+    post:
+      operationId: workflow_jobs_cancel
+      summary: Cancel a running workflow job
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Cancel initiated
+
+  /workflow_jobs/{id}/relaunch/:
+    post:
+      operationId: workflow_jobs_relaunch
+      summary: Relaunch a workflow job
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "201":
+          description: Relaunched
+
+  # ── Workflow DAG nodes (critical) ────────────────────────
+  /workflow_job_templates/{id}/workflow_nodes/:
+    get:
+      operationId: workflow_job_templates_nodes_list
+      summary: List nodes of a workflow job template
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Node list
+
+    post:
+      operationId: workflow_job_templates_nodes_create
+      summary: Add a node to a workflow DAG
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                unified_job_template: { type: integer }
+                inventory: { type: integer }
+                extra_data: { type: object }
+                limit: { type: string }
+                identifier: { type: string }
+                all_parents_must_converge: { type: boolean }
+      responses:
+        "201":
+          description: Node created
+
+  /workflow_job_template_nodes/:
+    get:
+      operationId: workflow_job_template_nodes_list
+      tags: [workflows]
+      parameters:
+        - name: workflow_job_template
+          in: query
+          schema: { type: integer }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        "200":
+          description: Node list
+
+    post:
+      operationId: workflow_job_template_nodes_create
+      tags: [workflows]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workflow_job_template: { type: integer }
+                unified_job_template: { type: integer }
+                inventory: { type: integer }
+                extra_data: { type: object }
+                limit: { type: string }
+                identifier: { type: string }
+                all_parents_must_converge: { type: boolean }
+      responses:
+        "201":
+          description: Created
+
+  /workflow_job_template_nodes/{id}/:
+    get:
+      operationId: workflow_job_template_nodes_read
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Node details
+
+    patch:
+      operationId: workflow_job_template_nodes_update
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                unified_job_template: { type: integer }
+                inventory: { type: integer }
+                extra_data: { type: object }
+                limit: { type: string }
+                identifier: { type: string }
+                all_parents_must_converge: { type: boolean }
+      responses:
+        "200":
+          description: Updated
+
+    delete:
+      operationId: workflow_job_template_nodes_delete
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  /workflow_job_template_nodes/{id}/success_nodes/:
+    get:
+      operationId: workflow_nodes_success_list
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Success child nodes
+
+    post:
+      operationId: workflow_nodes_success_attach
+      summary: Attach/detach a success child node (id + disassociate)
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: integer }
+                disassociate: { type: boolean }
+      responses:
+        "204":
+          description: Done
+
+  /workflow_job_template_nodes/{id}/failure_nodes/:
+    get:
+      operationId: workflow_nodes_failure_list
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Failure child nodes
+
+    post:
+      operationId: workflow_nodes_failure_attach
+      summary: Attach/detach a failure child node (id + disassociate)
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: integer }
+                disassociate: { type: boolean }
+      responses:
+        "204":
+          description: Done
+
+  /workflow_job_template_nodes/{id}/always_nodes/:
+    get:
+      operationId: workflow_nodes_always_list
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Always child nodes
+
+    post:
+      operationId: workflow_nodes_always_attach
+      summary: Attach/detach an always child node (id + disassociate)
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: integer }
+                disassociate: { type: boolean }
+      responses:
+        "204":
+          description: Done
+
+  /workflow_approvals/:
+    get:
+      operationId: workflow_approvals_list
+      tags: [workflows]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Approval list
+
+  /workflow_approvals/{id}/approve/:
+    post:
+      operationId: workflow_approvals_approve
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Approved
+
+  /workflow_approvals/{id}/deny/:
+    post:
+      operationId: workflow_approvals_deny
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Denied
+
+  # ── Bulk operations ──────────────────────────────────────
+  /bulk/host_create/:
+    post:
+      operationId: bulk_host_create
+      summary: Create many hosts in a single call
+      tags: [hosts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inventory: { type: integer }
+                hosts:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      description: { type: string }
+                      variables: { type: string }
+                      enabled: { type: boolean }
+      responses:
+        "201":
+          description: Hosts created
+
+  /bulk/job_launch/:
+    post:
+      operationId: bulk_job_launch
+      summary: Launch multiple jobs in a single call
+      tags: [jobs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jobs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      unified_job_template: { type: integer }
+                      limit: { type: string }
+                      extra_data: { type: object }
+      responses:
+        "201":
+          description: Jobs launched
+
+  # ── Settings / RBAC / Notifications (read-only entries) ──
+  /settings/:
+    get:
+      operationId: settings_list
+      summary: List settings categories
+      tags: [system]
+      responses:
+        "200":
+          description: Settings categories
+
+  /settings/{category}/:
+    get:
+      operationId: settings_read
+      summary: Read settings for a category (e.g. system, authentication)
+      tags: [system]
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Settings values
+
+  /roles/:
+    get:
+      operationId: roles_list
+      tags: [access]
+      parameters:
+        - name: role_field
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        "200":
+          description: Role list
+
+  /notifications/:
+    get:
+      operationId: notifications_list
+      summary: Notification history
+      tags: [system]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Notification list
+
+  # ── Host / Group extras ─────────────────────────────────
+  /hosts/{id}/groups/:
+    get:
+      operationId: hosts_groups_list
+      summary: List groups a host belongs to
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Group list
+
+  /groups/{id}/variable_data/:
+    get:
+      operationId: groups_variable_data_read
+      summary: Get group-level variables (YAML/JSON)
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Variables
+
+    put:
+      operationId: groups_variable_data_update
+      summary: Replace group-level variables
+      tags: [hosts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Updated
+
+  # ── Survey specs ─────────────────────────────────────────
+  /job_templates/{id}/survey_spec/:
+    get:
+      operationId: job_templates_survey_read
+      summary: Get job template survey spec
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Survey spec
+
+    post:
+      operationId: job_templates_survey_create
+      summary: Replace job template survey spec
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                spec:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      question_name: { type: string }
+                      question_description: { type: string }
+                      required: { type: boolean }
+                      type: { type: string }
+                      variable: { type: string }
+                      min: { type: integer }
+                      max: { type: integer }
+                      default: { type: string }
+                      choices: { type: string }
+      responses:
+        "200":
+          description: Survey updated
+
+    delete:
+      operationId: job_templates_survey_delete
+      summary: Remove job template survey spec
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Survey removed
+
+  /workflow_job_templates/{id}/survey_spec/:
+    get:
+      operationId: workflow_job_templates_survey_read
+      summary: Get workflow survey spec
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Survey spec
+
+    post:
+      operationId: workflow_job_templates_survey_create
+      summary: Replace workflow survey spec
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                spec:
+                  type: array
+                  items: { type: object }
+      responses:
+        "200":
+          description: Survey updated
+
+    delete:
+      operationId: workflow_job_templates_survey_delete
+      summary: Remove workflow survey spec
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Survey removed
+
+  # ── Bulk delete ──────────────────────────────────────────
+  /bulk/host_delete/:
+    post:
+      operationId: bulk_host_delete
+      summary: Delete many hosts in a single call
+      tags: [hosts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hosts:
+                  type: array
+                  items: { type: integer }
+      responses:
+        "204":
+          description: Hosts deleted
+
+  # ── Project / Inventory source schedules ─────────────────
+  /projects/{id}/schedules/:
+    get:
+      operationId: projects_schedules_list
+      summary: List schedules attached to a project
+      tags: [projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Schedule list
+
+  /inventory_sources/{id}/schedules/:
+    get:
+      operationId: inventory_sources_schedules_list
+      summary: List schedules attached to an inventory source
+      tags: [inventories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Schedule list
+
+  /workflow_job_templates/{id}/schedules/:
+    get:
+      operationId: workflow_job_templates_schedules_list
+      summary: List schedules attached to a workflow job template
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Schedule list
+
+  # ── Ad hoc command list filters ──────────────────────────
+  /ad_hoc_commands/{id}/relaunch/:
+    post:
+      operationId: ad_hoc_commands_relaunch
+      summary: Relaunch an ad hoc command
+      tags: [commands]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "201":
+          description: Relaunched
+
+  # ── Workflow approval read ───────────────────────────────
+  /workflow_approvals/{id}/:
+    get:
+      operationId: workflow_approvals_read
+      summary: Get workflow approval details
+      tags: [workflows]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Approval details
+
+  # ── Notification attachments (per resource) ──────────────
+  /job_templates/{id}/notification_templates_started/:
+    get:
+      operationId: job_templates_notif_started_list
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List
+
+    post:
+      operationId: job_templates_notif_started_attach
+      summary: Attach/detach notification template on start (id + disassociate)
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: integer }
+                disassociate: { type: boolean }
+      responses:
+        "204":
+          description: Done
+
+  /job_templates/{id}/notification_templates_success/:
+    get:
+      operationId: job_templates_notif_success_list
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List
+
+    post:
+      operationId: job_templates_notif_success_attach
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: integer }
+                disassociate: { type: boolean }
+      responses:
+        "204":
+          description: Done
+
+  /job_templates/{id}/notification_templates_error/:
+    get:
+      operationId: job_templates_notif_error_list
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List
+
+    post:
+      operationId: job_templates_notif_error_attach
+      tags: [job_templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: integer }
+                disassociate: { type: boolean }
+      responses:
+        "204":
+          description: Done

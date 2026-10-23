@@ -1,0 +1,2904 @@
+openapi: "3.0.3"
+info:
+  title: NetBox REST API
+  description: >
+    NetBox DCIM/IPAM native REST API v4.4. GET to list/retrieve, POST to create, PATCH to partial update. All list endpoints return paginated JSON: {count, next, previous, results}. Query values may be strings, numbers or booleans; an array repeats the parameter once per element (status=active&status=planned).
+
+    Every resource in this spec supports list, retrieve, create and partial update.
+  version: "4.4"
+
+paths:
+  # ===== Devices =====
+  /api/dcim/devices/:
+    get:
+      operationId: dcim_devices_list
+      summary: List devices
+      description: List all devices. Filter by name, site, role, device_type, status, tenant, platform, serial, tag, q (free-text search), etc.
+      tags: [dcim]
+      parameters:
+      - {name: name, in: query, schema: {type: array, items: {type: string}}, description: "Filter by device name"}
+      - {name: site, in: query, schema: {type: array, items: {type: string}}, description: "Filter by site (slug)"}
+      - {name: site_id, in: query, schema: {type: array, items: {type: integer}}, description: "Filter by site ID"}
+      - {name: role, in: query, schema: {type: array, items: {type: string}}, description: "Filter by device role (slug)"}
+      - {name: role_id, in: query, schema: {type: array, items: {type: integer}}, description: "Filter by device role ID"}
+      - {name: device_type, in: query, schema: {type: array, items: {type: string}}, description: "Filter by device type (slug)"}
+      - {name: manufacturer, in: query, schema: {type: array, items: {type: string}}, description: "Filter by manufacturer (slug)"}
+      - {name: status, in: query, schema: {type: array, items: {type: string}}, description: "active, planned, staged, failed, inventory, decommissioning, offline"}
+      - {name: tenant, in: query, schema: {type: array, items: {type: string}}, description: "Filter by tenant (slug)"}
+      - {name: platform, in: query, schema: {type: array, items: {type: string}}, description: "Filter by platform (slug)"}
+      - {name: serial, in: query, schema: {type: array, items: {type: string}}, description: "Filter by serial number"}
+      - {name: tag, in: query, schema: {type: array, items: {type: string}}, description: "Filter by tag (slug)"}
+      - {name: q, in: query, schema: {type: string}, description: "Free-text search across name, serial, asset_tag"}
+      - {name: has_primary_ip, in: query, schema: {type: boolean}, description: "Has a primary IP assigned"}
+      - {name: region, in: query, schema: {type: array, items: {type: string}}, description: "Filter by region (slug)"}
+      - {name: limit, in: query, schema: {type: integer, default: 50}, description: "Max results per page"}
+      - {name: offset, in: query, schema: {type: integer, default: 0}, description: "Records to skip"}
+      - {name: ordering, in: query, schema: {type: string}, description: "Sort field (prefix with - for descending)"}
+      responses:
+        "200":
+          description: "Paginated list: {count, next, previous, results}"
+    post:
+      operationId: dcim_devices_create
+      summary: Create a device
+      description: Create a new device. References (site, device_type, role) accept integer ID or nested object with slug/name.
+      tags: [dcim]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_type, role, site]
+              properties:
+                name: {type: string}
+                device_type: {description: "Device type ID (integer) or {slug: '...'}"}
+                role: {description: "Device role ID (integer) or {slug: '...'}"}
+                site: {description: "Site ID (integer) or {slug: '...'}"}
+                status: {type: string, default: "active"}
+                tenant: {description: "Tenant ID or {slug: '...'} (optional)"}
+                platform: {description: "Platform ID or {slug: '...'} (optional)"}
+                serial: {type: string}
+                asset_tag: {type: string}
+                rack: {type: integer}
+                position: {type: number}
+                face: {type: string, description: "front or rear"}
+                comments: {type: string}
+                tags: {type: array, items: {type: object}}
+                custom_fields: {type: object, description: "Object whose keys MUST already be declared as custom fields for dcim.device. Pre-flight via extras_custom_fields_list?object_type=dcim.device, auto-create missing fields with extras_custom_fields_create. Sending an undeclared key returns 400."}
+      responses:
+        "201":
+          description: Device created
+
+  /api/dcim/devices/{id}/:
+    get:
+      operationId: dcim_devices_retrieve
+      summary: Get one device
+      description: Retrieve a single device by its integer ID, including primary_ip4, site, role, platform, tags and custom_fields.
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        "200":
+          description: Device
+    patch:
+      operationId: dcim_devices_partial_update
+      summary: Partially update a device
+      description: Update specific fields of an existing device. Only send fields to change.
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}, description: "Device ID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                status: {type: string}
+                site: {description: "Site ID or {slug}"}
+                role: {description: "Role ID or {slug}"}
+                device_type: {description: "Device type ID or {slug}"}
+                tenant: {description: "Tenant ID or {slug}"}
+                platform: {description: "Platform ID or {slug}"}
+                serial: {type: string}
+                tags: {type: array, items: {type: object}}
+                custom_fields: {type: object, description: "Object whose keys MUST already be declared as custom fields for dcim.device. Pre-flight via extras_custom_fields_list?object_type=dcim.device. Sending an undeclared key returns 400."}
+      responses:
+        "200":
+          description: Device updated
+
+  # ===== Sites =====
+  /api/dcim/sites/:
+    get:
+      operationId: dcim_sites_list
+      summary: List sites
+      description: List all sites. Filter by name, slug, status, region, tenant, tag, q.
+      tags: [dcim]
+      parameters:
+      - {name: name, in: query, schema: {type: array, items: {type: string}}}
+      - {name: slug, in: query, schema: {type: array, items: {type: string}}}
+      - {name: status, in: query, schema: {type: array, items: {type: string}}, description: "active, planned, staging, decommissioning, retired"}
+      - {name: region, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tenant, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tag, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}, description: "Free-text search"}
+      - {name: limit, in: query, schema: {type: integer, default: 50}}
+      - {name: offset, in: query, schema: {type: integer, default: 0}}
+      - {name: ordering, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: "Paginated list: {count, next, previous, results}"
+    post:
+      operationId: dcim_sites_create
+      summary: Create a site
+      tags: [dcim]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                status: {type: string, default: "active"}
+                region: {description: "Region ID (optional)"}
+                tenant: {description: "Tenant ID or {slug} (optional)"}
+                facility: {type: string}
+                description: {type: string}
+                physical_address: {type: string}
+                shipping_address: {type: string}
+                tags: {type: array, items: {type: object}}
+                custom_fields: {type: object, description: "Pre-flight required: object_type=dcim.site"}
+      responses:
+        "201":
+          description: Site created
+
+  /api/dcim/sites/{id}/:
+    patch:
+      operationId: dcim_sites_partial_update
+      summary: Partially update a site
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                status: {type: string}
+                region: {description: "Region ID"}
+                tenant: {description: "Tenant ID or {slug}"}
+                description: {type: string}
+                tags: {type: array, items: {type: object}}
+                custom_fields: {type: object, description: "Pre-flight required: object_type=dcim.site"}
+      responses:
+        "200":
+          description: Site updated
+
+  # ===== Device Types =====
+    get:
+      operationId: dcim_sites_retrieve
+      summary: Get one of the sites by ID
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+  /api/dcim/device-types/:
+    get:
+      operationId: dcim_device_types_list
+      summary: List device types
+      tags: [dcim]
+      parameters:
+      - {name: model, in: query, schema: {type: array, items: {type: string}}}
+      - {name: manufacturer, in: query, schema: {type: array, items: {type: string}}, description: "Manufacturer slug"}
+      - {name: manufacturer_id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: slug, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}}
+      - {name: offset, in: query, schema: {type: integer, default: 0}}
+      responses:
+        "200":
+          description: "Paginated list"
+    post:
+      operationId: dcim_device_types_create
+      summary: Create a device type
+      tags: [dcim]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [manufacturer, model, slug]
+              properties:
+                manufacturer: {description: "Manufacturer ID (integer)"}
+                model: {type: string}
+                slug: {type: string}
+                description: {type: string}
+                u_height: {type: number, default: 1}
+                tags: {type: array, items: {type: object}}
+      responses:
+        "201":
+          description: Device type created
+
+  /api/dcim/device-types/{id}/:
+    patch:
+      operationId: dcim_device_types_partial_update
+      summary: Partially update a device type
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                manufacturer: {description: "Manufacturer ID"}
+                model: {type: string}
+                slug: {type: string}
+                description: {type: string}
+      responses:
+        "200":
+          description: Device type updated
+
+  # ===== Device Roles =====
+    get:
+      operationId: dcim_device_types_retrieve
+      summary: Get one of the device types by ID
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+  /api/dcim/device-roles/:
+    get:
+      operationId: dcim_device_roles_list
+      summary: List device roles
+      tags: [dcim]
+      parameters:
+      - {name: name, in: query, schema: {type: array, items: {type: string}}}
+      - {name: slug, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}}
+      - {name: offset, in: query, schema: {type: integer, default: 0}}
+      responses:
+        "200":
+          description: "Paginated list"
+    post:
+      operationId: dcim_device_roles_create
+      summary: Create a device role
+      tags: [dcim]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                color: {type: string, description: "6-char hex color"}
+                description: {type: string}
+                tags: {type: array, items: {type: object}}
+      responses:
+        "201":
+          description: Device role created
+
+  /api/dcim/device-roles/{id}/:
+    patch:
+      operationId: dcim_device_roles_partial_update
+      summary: Partially update a device role
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                color: {type: string}
+                description: {type: string}
+      responses:
+        "200":
+          description: Device role updated
+
+  # ===== Manufacturers =====
+    get:
+      operationId: dcim_device_roles_retrieve
+      summary: Get one of the device roles by ID
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+  /api/dcim/manufacturers/:
+    get:
+      operationId: dcim_manufacturers_list
+      summary: List manufacturers
+      tags: [dcim]
+      parameters:
+      - {name: name, in: query, schema: {type: array, items: {type: string}}}
+      - {name: slug, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}}
+      - {name: offset, in: query, schema: {type: integer, default: 0}}
+      responses:
+        "200":
+          description: "Paginated list"
+    post:
+      operationId: dcim_manufacturers_create
+      summary: Create a manufacturer
+      tags: [dcim]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                description: {type: string}
+                tags: {type: array, items: {type: object}}
+      responses:
+        "201":
+          description: Manufacturer created
+
+  /api/dcim/manufacturers/{id}/:
+    patch:
+      operationId: dcim_manufacturers_partial_update
+      summary: Partially update a manufacturer
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                description: {type: string}
+      responses:
+        "200":
+          description: Manufacturer updated
+
+  # ===== Platforms =====
+    get:
+      operationId: dcim_manufacturers_retrieve
+      summary: Get one of the manufacturers by ID
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+  /api/dcim/platforms/:
+    get:
+      operationId: dcim_platforms_list
+      summary: List platforms
+      tags: [dcim]
+      parameters:
+      - {name: name, in: query, schema: {type: array, items: {type: string}}}
+      - {name: slug, in: query, schema: {type: array, items: {type: string}}}
+      - {name: manufacturer, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}}
+      - {name: offset, in: query, schema: {type: integer, default: 0}}
+      responses:
+        "200":
+          description: "Paginated list"
+    post:
+      operationId: dcim_platforms_create
+      summary: Create a platform
+      tags: [dcim]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                manufacturer: {description: "Manufacturer ID (optional)"}
+                description: {type: string}
+                tags: {type: array, items: {type: object}}
+      responses:
+        "201":
+          description: Platform created
+
+  /api/dcim/platforms/{id}/:
+    patch:
+      operationId: dcim_platforms_partial_update
+      summary: Partially update a platform
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                manufacturer: {description: "Manufacturer ID"}
+                description: {type: string}
+      responses:
+        "200":
+          description: Platform updated
+
+  # ===== Tenants =====
+    get:
+      operationId: dcim_platforms_retrieve
+      summary: Get one of the platforms by ID
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+  /api/tenancy/tenants/:
+    get:
+      operationId: tenancy_tenants_list
+      summary: List tenants
+      tags: [tenancy]
+      parameters:
+      - {name: name, in: query, schema: {type: array, items: {type: string}}}
+      - {name: slug, in: query, schema: {type: array, items: {type: string}}}
+      - {name: group, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tag, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}}
+      - {name: offset, in: query, schema: {type: integer, default: 0}}
+      responses:
+        "200":
+          description: "Paginated list"
+    post:
+      operationId: tenancy_tenants_create
+      summary: Create a tenant
+      tags: [tenancy]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                description: {type: string}
+                comments: {type: string}
+                group: {description: "Tenant group ID (optional)"}
+                tags: {type: array, items: {type: object}}
+                custom_fields: {type: object, description: "Pre-flight required: object_type=tenancy.tenant"}
+      responses:
+        "201":
+          description: Tenant created
+
+  /api/tenancy/tenants/{id}/:
+    patch:
+      operationId: tenancy_tenants_partial_update
+      summary: Partially update a tenant
+      tags: [tenancy]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                description: {type: string}
+                comments: {type: string}
+                tags: {type: array, items: {type: object}}
+                custom_fields: {type: object, description: "Pre-flight required: object_type=tenancy.tenant"}
+      responses:
+        "200":
+          description: Tenant updated
+
+  # ===== Circuits =====
+    get:
+      operationId: tenancy_tenants_retrieve
+      summary: Get one of the tenants by ID
+      tags: [tenancy]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+  /api/circuits/circuits/:
+    get:
+      operationId: circuits_circuits_list
+      summary: List circuits
+      tags: [circuits]
+      parameters:
+      - {name: cid, in: query, schema: {type: array, items: {type: string}}}
+      - {name: provider, in: query, schema: {type: array, items: {type: string}}, description: "Provider slug"}
+      - {name: provider_id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: type, in: query, schema: {type: array, items: {type: string}}, description: "Circuit type slug"}
+      - {name: status, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tenant, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tag, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}}
+      - {name: offset, in: query, schema: {type: integer, default: 0}}
+      responses:
+        "200":
+          description: "Paginated list"
+    post:
+      operationId: circuits_circuits_create
+      summary: Create a circuit
+      tags: [circuits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cid, type, provider]
+              properties:
+                cid: {type: string, description: "Circuit ID"}
+                type: {description: "Circuit type ID (integer)"}
+                provider: {description: "Provider ID (integer)"}
+                status: {type: string, default: "active"}
+                description: {type: string}
+                tags: {type: array, items: {type: object}}
+                custom_fields: {type: object, description: "Pre-flight required: object_type=circuits.circuit"}
+      responses:
+        "201":
+          description: Circuit created
+
+  /api/circuits/circuits/{id}/:
+    patch:
+      operationId: circuits_circuits_partial_update
+      summary: Partially update a circuit
+      tags: [circuits]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cid: {type: string}
+                status: {type: string}
+                description: {type: string}
+                tags: {type: array, items: {type: object}}
+                custom_fields: {type: object, description: "Pre-flight required: object_type=circuits.circuit"}
+      responses:
+        "200":
+          description: Circuit updated
+
+  # ===== Circuit Types =====
+    get:
+      operationId: circuits_circuits_retrieve
+      summary: Get one of the circuits by ID
+      tags: [circuits]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+  /api/circuits/circuit-types/:
+    get:
+      operationId: circuits_circuit_types_list
+      summary: List circuit types
+      tags: [circuits]
+      parameters:
+      - {name: name, in: query, schema: {type: array, items: {type: string}}}
+      - {name: slug, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}}
+      - {name: offset, in: query, schema: {type: integer, default: 0}}
+      responses:
+        "200":
+          description: "Paginated list"
+    post:
+      operationId: circuits_circuit_types_create
+      summary: Create a circuit type
+      tags: [circuits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                description: {type: string}
+                tags: {type: array, items: {type: object}}
+      responses:
+        "201":
+          description: Circuit type created
+
+  # ===== Providers =====
+  /api/circuits/providers/:
+    get:
+      operationId: circuits_providers_list
+      summary: List providers
+      tags: [circuits]
+      parameters:
+      - {name: name, in: query, schema: {type: array, items: {type: string}}}
+      - {name: slug, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}}
+      - {name: offset, in: query, schema: {type: integer, default: 0}}
+      responses:
+        "200":
+          description: "Paginated list"
+    post:
+      operationId: circuits_providers_create
+      summary: Create a provider
+      tags: [circuits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                description: {type: string}
+                comments: {type: string}
+                accounts: {type: array, items: {type: integer}, description: "Provider account IDs (NetBox 4.x; replaces the old 'account' text field)"}
+                asns: {type: array, items: {type: integer}, description: "ASN object IDs (NetBox 4.x; replaces the old 'asn' integer)"}
+                tags: {type: array, items: {type: object}}
+      responses:
+        "201":
+          description: Provider created
+
+  /api/circuits/providers/{id}/:
+    patch:
+      operationId: circuits_providers_partial_update
+      summary: Partially update a provider
+      tags: [circuits]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                description: {type: string}
+                comments: {type: string}
+                accounts: {type: array, items: {type: integer}}
+                asns: {type: array, items: {type: integer}}
+                tags: {type: array, items: {type: object}}
+      responses:
+        "200":
+          description: Provider updated
+
+  # ===== Custom Fields =====
+    get:
+      operationId: circuits_providers_retrieve
+      summary: Get one of the providers by ID
+      tags: [circuits]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+  /api/extras/custom-fields/:
+    get:
+      operationId: extras_custom_fields_list
+      summary: List custom fields
+      description: >
+        List custom field definitions. Use object_type to filter to a single
+        target model (e.g. dcim.device) — this is the canonical pre-flight
+        before sending custom_fields in any device/site/circuit create or
+        update payload.
+      tags: [extras]
+      parameters:
+      - {name: name, in: query, schema: {type: array, items: {type: string}}, description: "Filter by field name"}
+      - {name: object_type, in: query, schema: {type: array, items: {type: string}}, description: "Filter by target object type, e.g. 'dcim.device', 'dcim.site', 'tenancy.tenant', 'circuits.circuit'"}
+      - {name: type, in: query, schema: {type: array, items: {type: string}}, description: "Filter by field type (text, longtext, integer, boolean, date, json, ...)"}
+      - {name: required, in: query, schema: {type: boolean}, description: "Filter by whether the field is required"}
+      - {name: q, in: query, schema: {type: string}, description: "Free-text search"}
+      - {name: limit, in: query, schema: {type: integer, default: 50}}
+      - {name: offset, in: query, schema: {type: integer, default: 0}}
+      responses:
+        "200":
+          description: "Paginated list"
+    post:
+      operationId: extras_custom_fields_create
+      summary: Create a custom field
+      description: >
+        Declare a new custom field for one or more object types. Required
+        before any object's custom_fields payload may include this field's
+        name. Use type=longtext for multi-line strings (configs, command
+        outputs), type=text for short values, type=json for dicts/lists.
+      tags: [extras]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type, object_types]
+              properties:
+                name: {type: string, description: "Snake_case identifier used in custom_fields payloads"}
+                label: {type: string, description: "Human-readable label shown in the UI; defaults to a Title Case version of name"}
+                type: {type: string, description: "text, longtext, integer, boolean, date, url, json, select, multiselect, object, multiobject"}
+                object_types: {type: array, items: {type: string}, description: "Content types this field applies to, e.g. ['dcim.device', 'dcim.site']"}
+                description: {type: string}
+                required: {type: boolean, default: false}
+                default: {type: string, description: "Default value (must match the field type)"}
+      responses:
+        "201":
+          description: Custom field created
+
+  /api/extras/custom-fields/{id}/:
+    patch:
+      operationId: extras_custom_fields_partial_update
+      summary: Partially update a custom field
+      tags: [extras]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: {type: string}
+                description: {type: string}
+                object_types: {type: array, items: {type: string}}
+                required: {type: boolean}
+      responses:
+        "200":
+          description: Custom field updated
+
+    get:
+      operationId: extras_custom_fields_retrieve
+      summary: Get one of the custom fields by ID
+      tags: [extras]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+  /api/circuits/circuit-types/{id}/:
+    patch:
+      operationId: circuits_circuit_types_partial_update
+      summary: Partially update a circuit type
+      tags: [circuits]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                description: {type: string}
+      responses:
+        "200":
+          description: Circuit type updated
+
+  # ===== Interfaces and cables =====
+    get:
+      operationId: circuits_circuit_types_retrieve
+      summary: Get one of the circuit types by ID
+      tags: [circuits]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+  /api/dcim/interfaces/:
+    get:
+      operationId: dcim_interfaces_list
+      summary: List interfaces
+      description: >
+        List device interfaces. Each result includes cable (ID or null) and
+        link_peers (the interface on the other end of the cable, with its
+        device). Filter by device and name to find what a port is connected to.
+      tags: [dcim]
+      parameters:
+      - {name: device, in: query, schema: {type: array, items: {type: string}}, description: "Filter by device name"}
+      - {name: device_id, in: query, schema: {type: array, items: {type: integer}}, description: "Filter by device ID"}
+      - {name: name, in: query, schema: {type: array, items: {type: string}}, description: "Filter by interface name, e.g. ethernet-1/1"}
+      - {name: cabled, in: query, schema: {type: boolean}, description: "Only interfaces with (true) or without (false) a cable"}
+      - {name: enabled, in: query, schema: {type: boolean}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}, description: "Max results per page (max 1000)"}
+      - {name: offset, in: query, schema: {type: integer, default: 0}, description: "Records to skip"}
+      responses:
+        "200":
+          description: "Paginated list"
+
+    post:
+      operationId: dcim_interfaces_create
+      summary: Create interfaces
+      description: 'Create an interface on a device. Required: device (ID), name, type (for example 1000base-t, 10gbase-x-sfpp, virtual).'
+      tags: [dcim]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - device
+              - name
+              - type
+              properties:
+                device:
+                  description: ID (integer) or nested object
+                vdcs:
+                  type: array
+                  items:
+                    type: integer
+                module:
+                  description: see NetBox API
+                name:
+                  type: string
+                label:
+                  type: string
+                  description: Physical label
+                type:
+                  type: string
+                  enum:
+                  - virtual
+                  - bridge
+                  - lag
+                  - 100base-fx
+                  - 100base-lfx
+                  - 100base-tx
+                  - 100base-t1
+                  - 1000base-bx10-d
+                  - 1000base-bx10-u
+                  - 1000base-cx
+                  - 1000base-cwdm
+                  - 1000base-dwdm
+                  - 1000base-ex
+                  - 1000base-sx
+                  - 1000base-lsx
+                  - 1000base-lx
+                  - 1000base-lx10
+                  - 1000base-t
+                  - 1000base-tx
+                  - 1000base-zx
+                  - 2.5gbase-t
+                  - 5gbase-t
+                  - 10gbase-br-d
+                  - 10gbase-br-u
+                  - 10gbase-cx4
+                  - 10gbase-er
+                  - 10gbase-lr
+                  - 10gbase-lrm
+                  - 10gbase-lx4
+                  - 10gbase-sr
+                  - 10gbase-t
+                  - 10gbase-zr
+                  - 25gbase-cr
+                  - 25gbase-er
+                  - 25gbase-lr
+                  - 25gbase-sr
+                  - 25gbase-t
+                  - 40gbase-cr4
+                  - 40gbase-er4
+                  - 40gbase-fr4
+                  - 40gbase-lr4
+                  - 40gbase-sr4
+                  - 50gbase-cr
+                  - 50gbase-er
+                  - 50gbase-fr
+                  - 50gbase-lr
+                  - 50gbase-sr
+                  - 100gbase-cr1
+                  - 100gbase-cr2
+                  - 100gbase-cr4
+                  - 100gbase-cr10
+                  - 100gbase-dr
+                  - 100gbase-er4
+                  - 100gbase-fr1
+                  - 100gbase-lr1
+                  - 100gbase-lr4
+                  - 100gbase-sr1
+                  - 100gbase-sr1.2
+                  - 100gbase-sr2
+                  - 100gbase-sr4
+                  - 100gbase-sr10
+                  - 100gbase-zr
+                  - 200gbase-cr2
+                  - 200gbase-cr4
+                  - 200gbase-sr2
+                  - 200gbase-sr4
+                  - 200gbase-dr4
+                  - 200gbase-er4
+                  - 200gbase-fr4
+                  - 200gbase-lr4
+                  - 200gbase-vr2
+                  - 400gbase-cr4
+                  - 400gbase-dr4
+                  - 400gbase-er8
+                  - 400gbase-fr4
+                  - 400gbase-fr8
+                  - 400gbase-lr4
+                  - 400gbase-lr8
+                  - 400gbase-sr4
+                  - 400gbase-sr4_2
+                  - 400gbase-sr8
+                  - 400gbase-sr16
+                  - 400gbase-vr4
+                  - 400gbase-zr
+                  - 800gbase-cr8
+                  - 800gbase-dr8
+                  - 800gbase-sr8
+                  - 800gbase-vr8
+                  - 100base-x-sfp
+                  - 1000base-x-gbic
+                  - 1000base-x-sfp
+                  - 10gbase-x-sfpp
+                  - 10gbase-x-xfp
+                  - 10gbase-x-xenpak
+                  - 10gbase-x-x2
+                  - 25gbase-x-sfp28
+                  - 50gbase-x-sfp56
+                  - 40gbase-x-qsfpp
+                  - 50gbase-x-sfp28
+                  - 100gbase-x-cfp
+                  - 100gbase-x-cfp2
+                  - 200gbase-x-cfp2
+                  - 400gbase-x-cfp2
+                  - 100gbase-x-cfp4
+                  - 100gbase-x-cxp
+                  - 100gbase-x-cpak
+                  - 100gbase-x-dsfp
+                  - 100gbase-x-sfpdd
+                  - 100gbase-x-qsfp28
+                  - 100gbase-x-qsfpdd
+                  - 200gbase-x-qsfp56
+                  - 200gbase-x-qsfpdd
+                  - 400gbase-x-qsfp112
+                  - 400gbase-x-qsfpdd
+                  - 400gbase-x-osfp
+                  - 400gbase-x-osfp-rhs
+                  - 400gbase-x-cdfp
+                  - 400gbase-x-cfp8
+                  - 800gbase-x-qsfpdd
+                  - 800gbase-x-osfp
+                  - 1000base-kx
+                  - 2.5gbase-kx
+                  - 5gbase-kr
+                  - 10gbase-kr
+                  - 10gbase-kx4
+                  - 25gbase-kr
+                  - 40gbase-kr4
+                  - 50gbase-kr
+                  - 100gbase-kp4
+                  - 100gbase-kr2
+                  - 100gbase-kr4
+                  - ieee802.11a
+                  - ieee802.11g
+                  - ieee802.11n
+                  - ieee802.11ac
+                  - ieee802.11ad
+                  - ieee802.11ax
+                  - ieee802.11ay
+                  - ieee802.11be
+                  - ieee802.15.1
+                  - ieee802.15.4
+                  - other-wireless
+                  - gsm
+                  - cdma
+                  - lte
+                  - 4g
+                  - 5g
+                  - sonet-oc3
+                  - sonet-oc12
+                  - sonet-oc48
+                  - sonet-oc192
+                  - sonet-oc768
+                  - sonet-oc1920
+                  - sonet-oc3840
+                  - 1gfc-sfp
+                  - 2gfc-sfp
+                  - 4gfc-sfp
+                  - 8gfc-sfpp
+                  - 16gfc-sfpp
+                  - 32gfc-sfp28
+                  - 32gfc-sfpp
+                  - 64gfc-qsfpp
+                  - 64gfc-sfpdd
+                  - 64gfc-sfpp
+                  - 128gfc-qsfp28
+                  - infiniband-sdr
+                  - infiniband-ddr
+                  - infiniband-qdr
+                  - infiniband-fdr10
+                  - infiniband-fdr
+                  - infiniband-edr
+                  - infiniband-hdr
+                  - infiniband-ndr
+                  - infiniband-xdr
+                  - t1
+                  - e1
+                  - t3
+                  - e3
+                  - xdsl
+                  - docsis
+                  - moca
+                  - bpon
+                  - epon
+                  - 10g-epon
+                  - gpon
+                  - xg-pon
+                  - xgs-pon
+                  - ng-pon2
+                  - 25g-pon
+                  - 50g-pon
+                  - cisco-stackwise
+                  - cisco-stackwise-plus
+                  - cisco-flexstack
+                  - cisco-flexstack-plus
+                  - cisco-stackwise-80
+                  - cisco-stackwise-160
+                  - cisco-stackwise-320
+                  - cisco-stackwise-480
+                  - cisco-stackwise-1t
+                  - juniper-vcp
+                  - extreme-summitstack
+                  - extreme-summitstack-128
+                  - extreme-summitstack-256
+                  - extreme-summitstack-512
+                  - other
+                enabled:
+                  type: boolean
+                parent:
+                  type: integer
+                bridge:
+                  type: integer
+                lag:
+                  type: integer
+                mtu:
+                  type: integer
+                primary_mac_address:
+                  description: see NetBox API
+                speed:
+                  type: integer
+                duplex:
+                  type: string
+                  enum:
+                  - half
+                  - full
+                  - auto
+                  description: "* `half` - Half\n* `full` - Full\n* `auto` - Auto"
+                wwn:
+                  type: string
+                mgmt_only:
+                  type: boolean
+                  description: This interface is used only for out-of-band management
+                description:
+                  type: string
+                mode:
+                  type: string
+                  enum:
+                  - access
+                  - tagged
+                  - tagged-all
+                  - q-in-q
+                  description: "IEEE 802.1Q tagging strategy\n\n* `access` - Access\n* `tagged` - Tagged\n* `tagged-all` - Tagged (All)\n* `q-in-q` - Q-in-Q (802.1ad)"
+                rf_role:
+                  type: string
+                  enum:
+                  - ap
+                  - station
+                  description: "* `ap` - Access point\n* `station` - Station"
+                rf_channel:
+                  type: string
+                  enum:
+                  - 2.4g-1-2412-22
+                  - 2.4g-2-2417-22
+                  - 2.4g-3-2422-22
+                  - 2.4g-4-2427-22
+                  - 2.4g-5-2432-22
+                  - 2.4g-6-2437-22
+                  - 2.4g-7-2442-22
+                  - 2.4g-8-2447-22
+                  - 2.4g-9-2452-22
+                  - 2.4g-10-2457-22
+                  - 2.4g-11-2462-22
+                  - 2.4g-12-2467-22
+                  - 2.4g-13-2472-22
+                  - 5g-32-5160-20
+                  - 5g-34-5170-40
+                  - 5g-36-5180-20
+                  - 5g-38-5190-40
+                  - 5g-40-5200-20
+                  - 5g-42-5210-80
+                  - 5g-44-5220-20
+                  - 5g-46-5230-40
+                  - 5g-48-5240-20
+                  - 5g-50-5250-160
+                  - 5g-52-5260-20
+                  - 5g-54-5270-40
+                  - 5g-56-5280-20
+                  - 5g-58-5290-80
+                  - 5g-60-5300-20
+                  - 5g-62-5310-40
+                  - 5g-64-5320-20
+                  - 5g-100-5500-20
+                  - 5g-102-5510-40
+                  - 5g-104-5520-20
+                  - 5g-106-5530-80
+                  - 5g-108-5540-20
+                  - 5g-110-5550-40
+                  - 5g-112-5560-20
+                  - 5g-114-5570-160
+                  - 5g-116-5580-20
+                  - 5g-118-5590-40
+                  - 5g-120-5600-20
+                  - 5g-122-5610-80
+                  - 5g-124-5620-20
+                  - 5g-126-5630-40
+                  - 5g-128-5640-20
+                  - 5g-132-5660-20
+                  - 5g-134-5670-40
+                  - 5g-136-5680-20
+                  - 5g-138-5690-80
+                  - 5g-140-5700-20
+                  - 5g-142-5710-40
+                  - 5g-144-5720-20
+                  - 5g-149-5745-20
+                  - 5g-151-5755-40
+                  - 5g-153-5765-20
+                  - 5g-155-5775-80
+                  - 5g-157-5785-20
+                  - 5g-159-5795-40
+                  - 5g-161-5805-20
+                  - 5g-163-5815-160
+                  - 5g-165-5825-20
+                  - 5g-167-5835-40
+                  - 5g-169-5845-20
+                  - 5g-171-5855-80
+                  - 5g-173-5865-20
+                  - 5g-175-5875-40
+                  - 5g-177-5885-20
+                  - 6g-1-5955-20
+                  - 6g-3-5965-40
+                  - 6g-5-5975-20
+                  - 6g-7-5985-80
+                  - 6g-9-5995-20
+                  - 6g-11-6005-40
+                  - 6g-13-6015-20
+                  - 6g-15-6025-160
+                  - 6g-17-6035-20
+                  - 6g-19-6045-40
+                  - 6g-21-6055-20
+                  - 6g-23-6065-80
+                  - 6g-25-6075-20
+                  - 6g-27-6085-40
+                  - 6g-29-6095-20
+                  - 6g-31-6105-320
+                  - 6g-33-6115-20
+                  - 6g-35-6125-40
+                  - 6g-37-6135-20
+                  - 6g-39-6145-80
+                  - 6g-41-6155-20
+                  - 6g-43-6165-40
+                  - 6g-45-6175-20
+                  - 6g-47-6185-160
+                  - 6g-49-6195-20
+                  - 6g-51-6205-40
+                  - 6g-53-6215-20
+                  - 6g-55-6225-80
+                  - 6g-57-6235-20
+                  - 6g-59-6245-40
+                  - 6g-61-6255-20
+                  - 6g-65-6275-20
+                  - 6g-67-6285-40
+                  - 6g-69-6295-20
+                  - 6g-71-6305-80
+                  - 6g-73-6315-20
+                  - 6g-75-6325-40
+                  - 6g-77-6335-20
+                  - 6g-79-6345-160
+                  - 6g-81-6355-20
+                  - 6g-83-6365-40
+                  - 6g-85-6375-20
+                  - 6g-87-6385-80
+                  - 6g-89-6395-20
+                  - 6g-91-6405-40
+                  - 6g-93-6415-20
+                  - 6g-95-6425-320
+                  - 6g-97-6435-20
+                  - 6g-99-6445-40
+                  - 6g-101-6455-20
+                  - 6g-103-6465-80
+                  - 6g-105-6475-20
+                  - 6g-107-6485-40
+                  - 6g-109-6495-20
+                  - 6g-111-6505-160
+                  - 6g-113-6515-20
+                  - 6g-115-6525-40
+                  - 6g-117-6535-20
+                  - 6g-119-6545-80
+                  - 6g-121-6555-20
+                  - 6g-123-6565-40
+                  - 6g-125-6575-20
+                  - 6g-129-6595-20
+                  - 6g-131-6605-40
+                  - 6g-133-6615-20
+                  - 6g-135-6625-80
+                  - 6g-137-6635-20
+                  - 6g-139-6645-40
+                  - 6g-141-6655-20
+                  - 6g-143-6665-160
+                  - 6g-145-6675-20
+                  - 6g-147-6685-40
+                  - 6g-149-6695-20
+                  - 6g-151-6705-80
+                  - 6g-153-6715-20
+                  - 6g-155-6725-40
+                  - 6g-157-6735-20
+                  - 6g-159-6745-320
+                  - 6g-161-6755-20
+                  - 6g-163-6765-40
+                  - 6g-165-6775-20
+                  - 6g-167-6785-80
+                  - 6g-169-6795-20
+                  - 6g-171-6805-40
+                  - 6g-173-6815-20
+                  - 6g-175-6825-160
+                  - 6g-177-6835-20
+                  - 6g-179-6845-40
+                  - 6g-181-6855-20
+                  - 6g-183-6865-80
+                  - 6g-185-6875-20
+                  - 6g-187-6885-40
+                  - 6g-189-6895-20
+                  - 6g-193-6915-20
+                  - 6g-195-6925-40
+                  - 6g-197-6935-20
+                  - 6g-199-6945-80
+                  - 6g-201-6955-20
+                  - 6g-203-6965-40
+                  - 6g-205-6975-20
+                  - 6g-207-6985-160
+                  - 6g-209-6995-20
+                  - 6g-211-7005-40
+                  - 6g-213-7015-20
+                  - 6g-215-7025-80
+                  - 6g-217-7035-20
+                  - 6g-219-7045-40
+                  - 6g-221-7055-20
+                  - 6g-225-7075-20
+                  - 6g-227-7085-40
+                  - 6g-229-7095-20
+                  - 6g-233-7115-20
+                  - 60g-1-58320-2160
+                  - 60g-2-60480-2160
+                  - 60g-3-62640-2160
+                  - 60g-4-64800-2160
+                  - 60g-5-66960-2160
+                  - 60g-6-69120-2160
+                  - 60g-9-59400-4320
+                  - 60g-10-61560-4320
+                  - 60g-11-63720-4320
+                  - 60g-12-65880-4320
+                  - 60g-13-68040-4320
+                  - 60g-17-60480-6480
+                  - 60g-18-62640-6480
+                  - 60g-19-64800-6480
+                  - 60g-20-66960-6480
+                  - 60g-25-61560-6480
+                  - 60g-26-63720-6480
+                  - 60g-27-65880-6480
+                poe_mode:
+                  type: string
+                  enum:
+                  - pd
+                  - pse
+                  description: "* `pd` - PD\n* `pse` - PSE"
+                poe_type:
+                  type: string
+                  enum:
+                  - type1-ieee802.3af
+                  - type2-ieee802.3at
+                  - type3-ieee802.3bt
+                  - type4-ieee802.3bt
+                  - passive-24v-2pair
+                  - passive-24v-4pair
+                  - passive-48v-2pair
+                  - passive-48v-4pair
+                rf_channel_frequency:
+                  type: number
+                  description: Populated by selected channel (if set)
+                rf_channel_width:
+                  type: number
+                  description: Populated by selected channel (if set)
+                tx_power:
+                  type: integer
+                untagged_vlan:
+                  description: see NetBox API
+                tagged_vlans:
+                  type: array
+                  items:
+                    type: integer
+                qinq_svlan:
+                  description: see NetBox API
+                vlan_translation_policy:
+                  description: see NetBox API
+                mark_connected:
+                  type: boolean
+                  description: Treat as if a cable is connected
+                wireless_lans:
+                  type: array
+                  items:
+                    type: integer
+                vrf:
+                  description: see NetBox API
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '201':
+          description: Created
+  /api/dcim/cables/:
+    get:
+      operationId: dcim_cables_list
+      summary: List cables
+      description: List cables with their a_terminations and b_terminations (the two ends). Filter by device or site.
+      tags: [dcim]
+      parameters:
+      - {name: device, in: query, schema: {type: array, items: {type: string}}, description: "Filter by device name on either end"}
+      - {name: device_id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: site, in: query, schema: {type: array, items: {type: string}}, description: "Filter by site (slug)"}
+      - {name: status, in: query, schema: {type: array, items: {type: string}}, description: "connected, planned, decommissioning"}
+      - {name: label, in: query, schema: {type: array, items: {type: string}}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}, description: "Max results per page (max 1000)"}
+      - {name: offset, in: query, schema: {type: integer, default: 0}, description: "Records to skip"}
+      responses:
+        "200":
+          description: "Paginated list"
+
+  # ===== IPAM =====
+    post:
+      operationId: dcim_cables_create
+      summary: Create cables
+      description: "Create a cable between two terminations. a_terminations and b_terminations are lists of {object_type: 'dcim.interface', object_id: <interface id>}; get the interface ids with dcim_interfaces_list (device + name). An interface can hold only one cable."
+      tags: [dcim]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                  - cat3
+                  - cat5
+                  - cat5e
+                  - cat6
+                  - cat6a
+                  - cat7
+                  - cat7a
+                  - cat8
+                  - mrj21-trunk
+                  - dac-active
+                  - dac-passive
+                  - coaxial
+                  - mmf
+                  - mmf-om1
+                  - mmf-om2
+                  - mmf-om3
+                  - mmf-om4
+                  - mmf-om5
+                  - smf
+                  - smf-os1
+                  - smf-os2
+                  - aoc
+                  - power
+                  - usb
+                a_terminations:
+                  type: array
+                  items:
+                    type: object
+                b_terminations:
+                  type: array
+                  items:
+                    type: object
+                status:
+                  type: string
+                  enum:
+                  - connected
+                  - planned
+                  - decommissioning
+                  description: "* `connected` - Connected\n* `planned` - Planned\n* `decommissioning` - Decommissioning"
+                tenant:
+                  description: see NetBox API
+                label:
+                  type: string
+                color:
+                  type: string
+                length:
+                  type: number
+                length_unit:
+                  type: string
+                  enum:
+                  - km
+                  - m
+                  - cm
+                  - mi
+                  - ft
+                  - in
+                  description: "* `km` - Kilometers\n* `m` - Meters\n* `cm` - Centimeters\n* `mi` - Miles\n* `ft` - Feet\n* `in` - Inches"
+                description:
+                  type: string
+                comments:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '201':
+          description: Created
+  /api/ipam/ip-addresses/:
+    get:
+      operationId: ipam_ip_addresses_list
+      summary: List IP addresses
+      tags: [ipam]
+      parameters:
+      - {name: address, in: query, schema: {type: array, items: {type: string}}, description: "Exact address, e.g. 10.0.0.1/24"}
+      - {name: device, in: query, schema: {type: array, items: {type: string}}, description: "Filter by assigned device name"}
+      - {name: device_id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: parent, in: query, schema: {type: array, items: {type: string}}, description: "Addresses inside this prefix"}
+      - {name: status, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}, description: "Max results per page (max 1000)"}
+      - {name: offset, in: query, schema: {type: integer, default: 0}, description: "Records to skip"}
+      responses:
+        "200":
+          description: "Paginated list"
+
+    post:
+      operationId: ipam_ip_addresses_create
+      summary: Create ip addresses
+      description: "Create an IP address in CIDR form (address: 10.0.0.1/24). To assign it to an interface set assigned_object_type 'dcim.interface' and assigned_object_id <interface id>. To make it the device's primary IP, PATCH the device with primary_ip4: <ip address id> after the IP is assigned to one of its interfaces."
+      tags: [ipam]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - address
+              properties:
+                address:
+                  type: string
+                vrf:
+                  description: see NetBox API
+                tenant:
+                  description: see NetBox API
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - reserved
+                  - deprecated
+                  - dhcp
+                  - slaac
+                  description: "The operational status of this IP\n\n* `active` - Active\n* `reserved` - Reserved\n* `deprecated` - Deprecated\n* `dhcp` - DHCP\n* `slaac` - SLAAC"
+                role:
+                  type: string
+                  enum:
+                  - loopback
+                  - secondary
+                  - anycast
+                  - vip
+                  - vrrp
+                  - hsrp
+                  - glbp
+                  - carp
+                assigned_object_type:
+                  type: string
+                assigned_object_id:
+                  type: integer
+                nat_inside:
+                  type: integer
+                  description: The IP for which this address is the "outside" IP
+                dns_name:
+                  type: string
+                  description: Hostname or FQDN (not case-sensitive)
+                description:
+                  type: string
+                comments:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '201':
+          description: Created
+  /api/ipam/prefixes/:
+    get:
+      operationId: ipam_prefixes_list
+      summary: List prefixes
+      tags: [ipam]
+      parameters:
+      - {name: prefix, in: query, schema: {type: array, items: {type: string}}, description: "Exact prefix, e.g. 10.0.0.0/24"}
+      - {name: within, in: query, schema: {type: string}, description: "Prefixes inside this one"}
+      - {name: contains, in: query, schema: {type: string}, description: "Prefixes containing this address or prefix"}
+      - {name: site, in: query, schema: {type: array, items: {type: string}}}
+      - {name: status, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}, description: "Max results per page (max 1000)"}
+      - {name: offset, in: query, schema: {type: integer, default: 0}, description: "Records to skip"}
+      responses:
+        "200":
+          description: "Paginated list"
+
+    post:
+      operationId: ipam_prefixes_create
+      summary: Create prefixes
+      description: 'Create a prefix (prefix: 10.0.0.0/24). Optional: scope (scope_type + scope_id, for example dcim.site), vrf, vlan, status, role, tenant.'
+      tags: [ipam]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - prefix
+              properties:
+                prefix:
+                  type: string
+                vrf:
+                  description: see NetBox API
+                scope_type:
+                  type: string
+                scope_id:
+                  type: integer
+                tenant:
+                  description: see NetBox API
+                vlan:
+                  description: see NetBox API
+                status:
+                  type: string
+                  enum:
+                  - container
+                  - active
+                  - reserved
+                  - deprecated
+                  description: "Operational status of this prefix\n\n* `container` - Container\n* `active` - Active\n* `reserved` - Reserved\n* `deprecated` - Deprecated"
+                role:
+                  description: see NetBox API
+                is_pool:
+                  type: boolean
+                  description: All IP addresses within this prefix are considered usable
+                mark_utilized:
+                  type: boolean
+                  description: Treat as fully utilized
+                description:
+                  type: string
+                comments:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '201':
+          description: Created
+  /api/ipam/vlans/:
+    get:
+      operationId: ipam_vlans_list
+      summary: List VLANs
+      tags: [ipam]
+      parameters:
+      - {name: vid, in: query, schema: {type: array, items: {type: integer}}, description: "VLAN ID"}
+      - {name: name, in: query, schema: {type: array, items: {type: string}}}
+      - {name: site, in: query, schema: {type: array, items: {type: string}}}
+      - {name: status, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}, description: "Max results per page (max 1000)"}
+      - {name: offset, in: query, schema: {type: integer, default: 0}, description: "Records to skip"}
+      responses:
+        "200":
+          description: "Paginated list"
+
+  # ===== Tags =====
+    post:
+      operationId: ipam_vlans_create
+      summary: Create vlans
+      description: 'Create a VLAN. Required: vid (1-4094) and name. Optional: site or group, status, tenant, role.'
+      tags: [ipam]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - vid
+              properties:
+                site:
+                  description: see NetBox API
+                group:
+                  description: see NetBox API
+                vid:
+                  type: integer
+                  description: Numeric VLAN ID (1-4094)
+                name:
+                  type: string
+                tenant:
+                  description: see NetBox API
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - reserved
+                  - deprecated
+                  description: "Operational status of this VLAN\n\n* `active` - Active\n* `reserved` - Reserved\n* `deprecated` - Deprecated"
+                role:
+                  description: see NetBox API
+                description:
+                  type: string
+                qinq_role:
+                  type: string
+                  enum:
+                  - svlan
+                  - cvlan
+                  description: "Customer/service VLAN designation (for Q-in-Q/IEEE 802.1ad)\n\n* `svlan` - Service\n* `cvlan` - Customer"
+                qinq_svlan:
+                  type: integer
+                comments:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '201':
+          description: Created
+  /api/extras/tags/:
+    get:
+      operationId: extras_tags_list
+      summary: List tags
+      description: List tags. Check that a tag exists (by slug) before adding it to a device or creating it.
+      tags: [extras]
+      parameters:
+      - {name: name, in: query, schema: {type: array, items: {type: string}}}
+      - {name: slug, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: limit, in: query, schema: {type: integer, default: 50}, description: "Max results per page (max 1000)"}
+      - {name: offset, in: query, schema: {type: integer, default: 0}, description: "Records to skip"}
+      responses:
+        "200":
+          description: "Paginated list"
+    post:
+      operationId: extras_tags_create
+      summary: Create a tag
+      description: "Create a tag. To tag a device, PATCH the device with its full tags list (existing tags plus the new one), as [{slug: '...'}]."
+      tags: [extras]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: {type: string}
+                slug: {type: string}
+                color: {type: string, description: "Hex color without #, e.g. 4caf50"}
+                description: {type: string}
+      responses:
+        "201":
+          description: Tag created
+  /api/dcim/interfaces/{id}/:
+    get:
+      operationId: dcim_interfaces_retrieve
+      summary: Get one of the interfaces by ID
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+    patch:
+      operationId: dcim_interfaces_partial_update
+      summary: Partially update interfaces
+      description: 'Update an interface: enabled, description, mtu, mode, untagged_vlan, tagged_vlans, tags.'
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device:
+                  description: ID (integer) or nested object
+                vdcs:
+                  type: array
+                  items:
+                    type: integer
+                module:
+                  description: see NetBox API
+                name:
+                  type: string
+                label:
+                  type: string
+                  description: Physical label
+                type:
+                  type: string
+                  enum:
+                  - virtual
+                  - bridge
+                  - lag
+                  - 100base-fx
+                  - 100base-lfx
+                  - 100base-tx
+                  - 100base-t1
+                  - 1000base-bx10-d
+                  - 1000base-bx10-u
+                  - 1000base-cx
+                  - 1000base-cwdm
+                  - 1000base-dwdm
+                  - 1000base-ex
+                  - 1000base-sx
+                  - 1000base-lsx
+                  - 1000base-lx
+                  - 1000base-lx10
+                  - 1000base-t
+                  - 1000base-tx
+                  - 1000base-zx
+                  - 2.5gbase-t
+                  - 5gbase-t
+                  - 10gbase-br-d
+                  - 10gbase-br-u
+                  - 10gbase-cx4
+                  - 10gbase-er
+                  - 10gbase-lr
+                  - 10gbase-lrm
+                  - 10gbase-lx4
+                  - 10gbase-sr
+                  - 10gbase-t
+                  - 10gbase-zr
+                  - 25gbase-cr
+                  - 25gbase-er
+                  - 25gbase-lr
+                  - 25gbase-sr
+                  - 25gbase-t
+                  - 40gbase-cr4
+                  - 40gbase-er4
+                  - 40gbase-fr4
+                  - 40gbase-lr4
+                  - 40gbase-sr4
+                  - 50gbase-cr
+                  - 50gbase-er
+                  - 50gbase-fr
+                  - 50gbase-lr
+                  - 50gbase-sr
+                  - 100gbase-cr1
+                  - 100gbase-cr2
+                  - 100gbase-cr4
+                  - 100gbase-cr10
+                  - 100gbase-dr
+                  - 100gbase-er4
+                  - 100gbase-fr1
+                  - 100gbase-lr1
+                  - 100gbase-lr4
+                  - 100gbase-sr1
+                  - 100gbase-sr1.2
+                  - 100gbase-sr2
+                  - 100gbase-sr4
+                  - 100gbase-sr10
+                  - 100gbase-zr
+                  - 200gbase-cr2
+                  - 200gbase-cr4
+                  - 200gbase-sr2
+                  - 200gbase-sr4
+                  - 200gbase-dr4
+                  - 200gbase-er4
+                  - 200gbase-fr4
+                  - 200gbase-lr4
+                  - 200gbase-vr2
+                  - 400gbase-cr4
+                  - 400gbase-dr4
+                  - 400gbase-er8
+                  - 400gbase-fr4
+                  - 400gbase-fr8
+                  - 400gbase-lr4
+                  - 400gbase-lr8
+                  - 400gbase-sr4
+                  - 400gbase-sr4_2
+                  - 400gbase-sr8
+                  - 400gbase-sr16
+                  - 400gbase-vr4
+                  - 400gbase-zr
+                  - 800gbase-cr8
+                  - 800gbase-dr8
+                  - 800gbase-sr8
+                  - 800gbase-vr8
+                  - 100base-x-sfp
+                  - 1000base-x-gbic
+                  - 1000base-x-sfp
+                  - 10gbase-x-sfpp
+                  - 10gbase-x-xfp
+                  - 10gbase-x-xenpak
+                  - 10gbase-x-x2
+                  - 25gbase-x-sfp28
+                  - 50gbase-x-sfp56
+                  - 40gbase-x-qsfpp
+                  - 50gbase-x-sfp28
+                  - 100gbase-x-cfp
+                  - 100gbase-x-cfp2
+                  - 200gbase-x-cfp2
+                  - 400gbase-x-cfp2
+                  - 100gbase-x-cfp4
+                  - 100gbase-x-cxp
+                  - 100gbase-x-cpak
+                  - 100gbase-x-dsfp
+                  - 100gbase-x-sfpdd
+                  - 100gbase-x-qsfp28
+                  - 100gbase-x-qsfpdd
+                  - 200gbase-x-qsfp56
+                  - 200gbase-x-qsfpdd
+                  - 400gbase-x-qsfp112
+                  - 400gbase-x-qsfpdd
+                  - 400gbase-x-osfp
+                  - 400gbase-x-osfp-rhs
+                  - 400gbase-x-cdfp
+                  - 400gbase-x-cfp8
+                  - 800gbase-x-qsfpdd
+                  - 800gbase-x-osfp
+                  - 1000base-kx
+                  - 2.5gbase-kx
+                  - 5gbase-kr
+                  - 10gbase-kr
+                  - 10gbase-kx4
+                  - 25gbase-kr
+                  - 40gbase-kr4
+                  - 50gbase-kr
+                  - 100gbase-kp4
+                  - 100gbase-kr2
+                  - 100gbase-kr4
+                  - ieee802.11a
+                  - ieee802.11g
+                  - ieee802.11n
+                  - ieee802.11ac
+                  - ieee802.11ad
+                  - ieee802.11ax
+                  - ieee802.11ay
+                  - ieee802.11be
+                  - ieee802.15.1
+                  - ieee802.15.4
+                  - other-wireless
+                  - gsm
+                  - cdma
+                  - lte
+                  - 4g
+                  - 5g
+                  - sonet-oc3
+                  - sonet-oc12
+                  - sonet-oc48
+                  - sonet-oc192
+                  - sonet-oc768
+                  - sonet-oc1920
+                  - sonet-oc3840
+                  - 1gfc-sfp
+                  - 2gfc-sfp
+                  - 4gfc-sfp
+                  - 8gfc-sfpp
+                  - 16gfc-sfpp
+                  - 32gfc-sfp28
+                  - 32gfc-sfpp
+                  - 64gfc-qsfpp
+                  - 64gfc-sfpdd
+                  - 64gfc-sfpp
+                  - 128gfc-qsfp28
+                  - infiniband-sdr
+                  - infiniband-ddr
+                  - infiniband-qdr
+                  - infiniband-fdr10
+                  - infiniband-fdr
+                  - infiniband-edr
+                  - infiniband-hdr
+                  - infiniband-ndr
+                  - infiniband-xdr
+                  - t1
+                  - e1
+                  - t3
+                  - e3
+                  - xdsl
+                  - docsis
+                  - moca
+                  - bpon
+                  - epon
+                  - 10g-epon
+                  - gpon
+                  - xg-pon
+                  - xgs-pon
+                  - ng-pon2
+                  - 25g-pon
+                  - 50g-pon
+                  - cisco-stackwise
+                  - cisco-stackwise-plus
+                  - cisco-flexstack
+                  - cisco-flexstack-plus
+                  - cisco-stackwise-80
+                  - cisco-stackwise-160
+                  - cisco-stackwise-320
+                  - cisco-stackwise-480
+                  - cisco-stackwise-1t
+                  - juniper-vcp
+                  - extreme-summitstack
+                  - extreme-summitstack-128
+                  - extreme-summitstack-256
+                  - extreme-summitstack-512
+                  - other
+                enabled:
+                  type: boolean
+                parent:
+                  type: integer
+                bridge:
+                  type: integer
+                lag:
+                  type: integer
+                mtu:
+                  type: integer
+                primary_mac_address:
+                  description: see NetBox API
+                speed:
+                  type: integer
+                duplex:
+                  type: string
+                  enum:
+                  - half
+                  - full
+                  - auto
+                  description: "* `half` - Half\n* `full` - Full\n* `auto` - Auto"
+                wwn:
+                  type: string
+                mgmt_only:
+                  type: boolean
+                  description: This interface is used only for out-of-band management
+                description:
+                  type: string
+                mode:
+                  type: string
+                  enum:
+                  - access
+                  - tagged
+                  - tagged-all
+                  - q-in-q
+                  description: "IEEE 802.1Q tagging strategy\n\n* `access` - Access\n* `tagged` - Tagged\n* `tagged-all` - Tagged (All)\n* `q-in-q` - Q-in-Q (802.1ad)"
+                rf_role:
+                  type: string
+                  enum:
+                  - ap
+                  - station
+                  description: "* `ap` - Access point\n* `station` - Station"
+                rf_channel:
+                  type: string
+                  enum:
+                  - 2.4g-1-2412-22
+                  - 2.4g-2-2417-22
+                  - 2.4g-3-2422-22
+                  - 2.4g-4-2427-22
+                  - 2.4g-5-2432-22
+                  - 2.4g-6-2437-22
+                  - 2.4g-7-2442-22
+                  - 2.4g-8-2447-22
+                  - 2.4g-9-2452-22
+                  - 2.4g-10-2457-22
+                  - 2.4g-11-2462-22
+                  - 2.4g-12-2467-22
+                  - 2.4g-13-2472-22
+                  - 5g-32-5160-20
+                  - 5g-34-5170-40
+                  - 5g-36-5180-20
+                  - 5g-38-5190-40
+                  - 5g-40-5200-20
+                  - 5g-42-5210-80
+                  - 5g-44-5220-20
+                  - 5g-46-5230-40
+                  - 5g-48-5240-20
+                  - 5g-50-5250-160
+                  - 5g-52-5260-20
+                  - 5g-54-5270-40
+                  - 5g-56-5280-20
+                  - 5g-58-5290-80
+                  - 5g-60-5300-20
+                  - 5g-62-5310-40
+                  - 5g-64-5320-20
+                  - 5g-100-5500-20
+                  - 5g-102-5510-40
+                  - 5g-104-5520-20
+                  - 5g-106-5530-80
+                  - 5g-108-5540-20
+                  - 5g-110-5550-40
+                  - 5g-112-5560-20
+                  - 5g-114-5570-160
+                  - 5g-116-5580-20
+                  - 5g-118-5590-40
+                  - 5g-120-5600-20
+                  - 5g-122-5610-80
+                  - 5g-124-5620-20
+                  - 5g-126-5630-40
+                  - 5g-128-5640-20
+                  - 5g-132-5660-20
+                  - 5g-134-5670-40
+                  - 5g-136-5680-20
+                  - 5g-138-5690-80
+                  - 5g-140-5700-20
+                  - 5g-142-5710-40
+                  - 5g-144-5720-20
+                  - 5g-149-5745-20
+                  - 5g-151-5755-40
+                  - 5g-153-5765-20
+                  - 5g-155-5775-80
+                  - 5g-157-5785-20
+                  - 5g-159-5795-40
+                  - 5g-161-5805-20
+                  - 5g-163-5815-160
+                  - 5g-165-5825-20
+                  - 5g-167-5835-40
+                  - 5g-169-5845-20
+                  - 5g-171-5855-80
+                  - 5g-173-5865-20
+                  - 5g-175-5875-40
+                  - 5g-177-5885-20
+                  - 6g-1-5955-20
+                  - 6g-3-5965-40
+                  - 6g-5-5975-20
+                  - 6g-7-5985-80
+                  - 6g-9-5995-20
+                  - 6g-11-6005-40
+                  - 6g-13-6015-20
+                  - 6g-15-6025-160
+                  - 6g-17-6035-20
+                  - 6g-19-6045-40
+                  - 6g-21-6055-20
+                  - 6g-23-6065-80
+                  - 6g-25-6075-20
+                  - 6g-27-6085-40
+                  - 6g-29-6095-20
+                  - 6g-31-6105-320
+                  - 6g-33-6115-20
+                  - 6g-35-6125-40
+                  - 6g-37-6135-20
+                  - 6g-39-6145-80
+                  - 6g-41-6155-20
+                  - 6g-43-6165-40
+                  - 6g-45-6175-20
+                  - 6g-47-6185-160
+                  - 6g-49-6195-20
+                  - 6g-51-6205-40
+                  - 6g-53-6215-20
+                  - 6g-55-6225-80
+                  - 6g-57-6235-20
+                  - 6g-59-6245-40
+                  - 6g-61-6255-20
+                  - 6g-65-6275-20
+                  - 6g-67-6285-40
+                  - 6g-69-6295-20
+                  - 6g-71-6305-80
+                  - 6g-73-6315-20
+                  - 6g-75-6325-40
+                  - 6g-77-6335-20
+                  - 6g-79-6345-160
+                  - 6g-81-6355-20
+                  - 6g-83-6365-40
+                  - 6g-85-6375-20
+                  - 6g-87-6385-80
+                  - 6g-89-6395-20
+                  - 6g-91-6405-40
+                  - 6g-93-6415-20
+                  - 6g-95-6425-320
+                  - 6g-97-6435-20
+                  - 6g-99-6445-40
+                  - 6g-101-6455-20
+                  - 6g-103-6465-80
+                  - 6g-105-6475-20
+                  - 6g-107-6485-40
+                  - 6g-109-6495-20
+                  - 6g-111-6505-160
+                  - 6g-113-6515-20
+                  - 6g-115-6525-40
+                  - 6g-117-6535-20
+                  - 6g-119-6545-80
+                  - 6g-121-6555-20
+                  - 6g-123-6565-40
+                  - 6g-125-6575-20
+                  - 6g-129-6595-20
+                  - 6g-131-6605-40
+                  - 6g-133-6615-20
+                  - 6g-135-6625-80
+                  - 6g-137-6635-20
+                  - 6g-139-6645-40
+                  - 6g-141-6655-20
+                  - 6g-143-6665-160
+                  - 6g-145-6675-20
+                  - 6g-147-6685-40
+                  - 6g-149-6695-20
+                  - 6g-151-6705-80
+                  - 6g-153-6715-20
+                  - 6g-155-6725-40
+                  - 6g-157-6735-20
+                  - 6g-159-6745-320
+                  - 6g-161-6755-20
+                  - 6g-163-6765-40
+                  - 6g-165-6775-20
+                  - 6g-167-6785-80
+                  - 6g-169-6795-20
+                  - 6g-171-6805-40
+                  - 6g-173-6815-20
+                  - 6g-175-6825-160
+                  - 6g-177-6835-20
+                  - 6g-179-6845-40
+                  - 6g-181-6855-20
+                  - 6g-183-6865-80
+                  - 6g-185-6875-20
+                  - 6g-187-6885-40
+                  - 6g-189-6895-20
+                  - 6g-193-6915-20
+                  - 6g-195-6925-40
+                  - 6g-197-6935-20
+                  - 6g-199-6945-80
+                  - 6g-201-6955-20
+                  - 6g-203-6965-40
+                  - 6g-205-6975-20
+                  - 6g-207-6985-160
+                  - 6g-209-6995-20
+                  - 6g-211-7005-40
+                  - 6g-213-7015-20
+                  - 6g-215-7025-80
+                  - 6g-217-7035-20
+                  - 6g-219-7045-40
+                  - 6g-221-7055-20
+                  - 6g-225-7075-20
+                  - 6g-227-7085-40
+                  - 6g-229-7095-20
+                  - 6g-233-7115-20
+                  - 60g-1-58320-2160
+                  - 60g-2-60480-2160
+                  - 60g-3-62640-2160
+                  - 60g-4-64800-2160
+                  - 60g-5-66960-2160
+                  - 60g-6-69120-2160
+                  - 60g-9-59400-4320
+                  - 60g-10-61560-4320
+                  - 60g-11-63720-4320
+                  - 60g-12-65880-4320
+                  - 60g-13-68040-4320
+                  - 60g-17-60480-6480
+                  - 60g-18-62640-6480
+                  - 60g-19-64800-6480
+                  - 60g-20-66960-6480
+                  - 60g-25-61560-6480
+                  - 60g-26-63720-6480
+                  - 60g-27-65880-6480
+                poe_mode:
+                  type: string
+                  enum:
+                  - pd
+                  - pse
+                  description: "* `pd` - PD\n* `pse` - PSE"
+                poe_type:
+                  type: string
+                  enum:
+                  - type1-ieee802.3af
+                  - type2-ieee802.3at
+                  - type3-ieee802.3bt
+                  - type4-ieee802.3bt
+                  - passive-24v-2pair
+                  - passive-24v-4pair
+                  - passive-48v-2pair
+                  - passive-48v-4pair
+                rf_channel_frequency:
+                  type: number
+                  description: Populated by selected channel (if set)
+                rf_channel_width:
+                  type: number
+                  description: Populated by selected channel (if set)
+                tx_power:
+                  type: integer
+                untagged_vlan:
+                  description: see NetBox API
+                tagged_vlans:
+                  type: array
+                  items:
+                    type: integer
+                qinq_svlan:
+                  description: see NetBox API
+                vlan_translation_policy:
+                  description: see NetBox API
+                mark_connected:
+                  type: boolean
+                  description: Treat as if a cable is connected
+                wireless_lans:
+                  type: array
+                  items:
+                    type: integer
+                vrf:
+                  description: see NetBox API
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '200':
+          description: Updated
+  /api/dcim/cables/{id}/:
+    get:
+      operationId: dcim_cables_retrieve
+      summary: Get one of the cables by ID
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+    patch:
+      operationId: dcim_cables_partial_update
+      summary: Partially update cables
+      description: 'Update a cable: status (connected, planned, decommissioning), label, color, type, description, or its terminations.'
+      tags: [dcim]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                  - cat3
+                  - cat5
+                  - cat5e
+                  - cat6
+                  - cat6a
+                  - cat7
+                  - cat7a
+                  - cat8
+                  - mrj21-trunk
+                  - dac-active
+                  - dac-passive
+                  - coaxial
+                  - mmf
+                  - mmf-om1
+                  - mmf-om2
+                  - mmf-om3
+                  - mmf-om4
+                  - mmf-om5
+                  - smf
+                  - smf-os1
+                  - smf-os2
+                  - aoc
+                  - power
+                  - usb
+                a_terminations:
+                  type: array
+                  items:
+                    type: object
+                b_terminations:
+                  type: array
+                  items:
+                    type: object
+                status:
+                  type: string
+                  enum:
+                  - connected
+                  - planned
+                  - decommissioning
+                  description: "* `connected` - Connected\n* `planned` - Planned\n* `decommissioning` - Decommissioning"
+                tenant:
+                  description: see NetBox API
+                label:
+                  type: string
+                color:
+                  type: string
+                length:
+                  type: number
+                length_unit:
+                  type: string
+                  enum:
+                  - km
+                  - m
+                  - cm
+                  - mi
+                  - ft
+                  - in
+                  description: "* `km` - Kilometers\n* `m` - Meters\n* `cm` - Centimeters\n* `mi` - Miles\n* `ft` - Feet\n* `in` - Inches"
+                description:
+                  type: string
+                comments:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '200':
+          description: Updated
+  /api/ipam/ip-addresses/{id}/:
+    get:
+      operationId: ipam_ip_addresses_retrieve
+      summary: Get one of the ip addresses by ID
+      tags: [ipam]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+    patch:
+      operationId: ipam_ip_addresses_partial_update
+      summary: Partially update ip addresses
+      description: 'Update an IP address: status, dns_name, description, tags, or its assignment (assigned_object_type + assigned_object_id).'
+      tags: [ipam]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                address:
+                  type: string
+                vrf:
+                  description: see NetBox API
+                tenant:
+                  description: see NetBox API
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - reserved
+                  - deprecated
+                  - dhcp
+                  - slaac
+                  description: "The operational status of this IP\n\n* `active` - Active\n* `reserved` - Reserved\n* `deprecated` - Deprecated\n* `dhcp` - DHCP\n* `slaac` - SLAAC"
+                role:
+                  type: string
+                  enum:
+                  - loopback
+                  - secondary
+                  - anycast
+                  - vip
+                  - vrrp
+                  - hsrp
+                  - glbp
+                  - carp
+                assigned_object_type:
+                  type: string
+                assigned_object_id:
+                  type: integer
+                nat_inside:
+                  type: integer
+                  description: The IP for which this address is the "outside" IP
+                dns_name:
+                  type: string
+                  description: Hostname or FQDN (not case-sensitive)
+                description:
+                  type: string
+                comments:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '200':
+          description: Updated
+  /api/ipam/prefixes/{id}/:
+    get:
+      operationId: ipam_prefixes_retrieve
+      summary: Get one of the prefixes by ID
+      tags: [ipam]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+    patch:
+      operationId: ipam_prefixes_partial_update
+      summary: Partially update prefixes
+      description: 'Update a prefix: status, description, vlan, vrf, scope, tags.'
+      tags: [ipam]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prefix:
+                  type: string
+                vrf:
+                  description: see NetBox API
+                scope_type:
+                  type: string
+                scope_id:
+                  type: integer
+                tenant:
+                  description: see NetBox API
+                vlan:
+                  description: see NetBox API
+                status:
+                  type: string
+                  enum:
+                  - container
+                  - active
+                  - reserved
+                  - deprecated
+                  description: "Operational status of this prefix\n\n* `container` - Container\n* `active` - Active\n* `reserved` - Reserved\n* `deprecated` - Deprecated"
+                role:
+                  description: see NetBox API
+                is_pool:
+                  type: boolean
+                  description: All IP addresses within this prefix are considered usable
+                mark_utilized:
+                  type: boolean
+                  description: Treat as fully utilized
+                description:
+                  type: string
+                comments:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '200':
+          description: Updated
+  /api/ipam/ip-ranges/:
+    get:
+      operationId: ipam_ip_ranges_list
+      summary: List ip ranges
+      tags: [ipam]
+      parameters:
+      - {name: contact, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: contact_group, in: query, schema: {type: array, items: {type: string}}}
+      - {name: contact_role, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: contains, in: query, schema: {type: string}}
+      - {name: description, in: query, schema: {type: array, items: {type: string}}}
+      - {name: end_address, in: query, schema: {type: array, items: {type: string}}}
+      - {name: family, in: query, schema: {type: number}}
+      - {name: id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: limit, in: query, schema: {type: integer}}
+      - {name: mark_populated, in: query, schema: {type: boolean}}
+      - {name: mark_utilized, in: query, schema: {type: boolean}}
+      - {name: offset, in: query, schema: {type: integer}}
+      - {name: ordering, in: query, schema: {type: string}}
+      - {name: parent, in: query, schema: {type: array, items: {type: string}}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: role, in: query, schema: {type: array, items: {type: string}}}
+      - {name: role_id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: size, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: start_address, in: query, schema: {type: array, items: {type: string}}}
+      - {name: status, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tag, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tag_id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: tenant, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tenant_group, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tenant_group_id, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tenant_id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: vrf, in: query, schema: {type: array, items: {type: string}}}
+      - {name: vrf_id, in: query, schema: {type: array, items: {type: integer}}}
+      responses:
+        '200':
+          description: 'Paginated list: {count, next, previous, results}'
+    post:
+      operationId: ipam_ip_ranges_create
+      summary: Create ip ranges
+      description: 'Create an IP range. Required: start_address and end_address in CIDR form.'
+      tags: [ipam]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - end_address
+              - start_address
+              properties:
+                start_address:
+                  type: string
+                end_address:
+                  type: string
+                vrf:
+                  description: see NetBox API
+                tenant:
+                  description: see NetBox API
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - reserved
+                  - deprecated
+                  description: "Operational status of this range\n\n* `active` - Active\n* `reserved` - Reserved\n* `deprecated` - Deprecated"
+                role:
+                  description: see NetBox API
+                description:
+                  type: string
+                comments:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+                mark_populated:
+                  type: boolean
+                  description: Prevent the creation of IP addresses within this range
+                mark_utilized:
+                  type: boolean
+                  description: Report space as 100% utilized
+      responses:
+        '201':
+          description: Created
+  /api/ipam/ip-ranges/{id}/:
+    get:
+      operationId: ipam_ip_ranges_retrieve
+      summary: Get one of the ip ranges by ID
+      tags: [ipam]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+    patch:
+      operationId: ipam_ip_ranges_partial_update
+      summary: Partially update ip ranges
+      tags: [ipam]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                start_address:
+                  type: string
+                end_address:
+                  type: string
+                vrf:
+                  description: see NetBox API
+                tenant:
+                  description: see NetBox API
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - reserved
+                  - deprecated
+                  description: "Operational status of this range\n\n* `active` - Active\n* `reserved` - Reserved\n* `deprecated` - Deprecated"
+                role:
+                  description: see NetBox API
+                description:
+                  type: string
+                comments:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+                mark_populated:
+                  type: boolean
+                  description: Prevent the creation of IP addresses within this range
+                mark_utilized:
+                  type: boolean
+                  description: Report space as 100% utilized
+      responses:
+        '200':
+          description: Updated
+  /api/ipam/vlans/{id}/:
+    get:
+      operationId: ipam_vlans_retrieve
+      summary: Get one of the vlans by ID
+      tags: [ipam]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+    patch:
+      operationId: ipam_vlans_partial_update
+      summary: Partially update vlans
+      tags: [ipam]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                site:
+                  description: see NetBox API
+                group:
+                  description: see NetBox API
+                vid:
+                  type: integer
+                  description: Numeric VLAN ID (1-4094)
+                name:
+                  type: string
+                tenant:
+                  description: see NetBox API
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - reserved
+                  - deprecated
+                  description: "Operational status of this VLAN\n\n* `active` - Active\n* `reserved` - Reserved\n* `deprecated` - Deprecated"
+                role:
+                  description: see NetBox API
+                description:
+                  type: string
+                qinq_role:
+                  type: string
+                  enum:
+                  - svlan
+                  - cvlan
+                  description: "Customer/service VLAN designation (for Q-in-Q/IEEE 802.1ad)\n\n* `svlan` - Service\n* `cvlan` - Customer"
+                qinq_svlan:
+                  type: integer
+                comments:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '200':
+          description: Updated
+  /api/ipam/vrfs/:
+    get:
+      operationId: ipam_vrfs_list
+      summary: List vrfs
+      tags: [ipam]
+      parameters:
+      - {name: description, in: query, schema: {type: array, items: {type: string}}}
+      - {name: enforce_unique, in: query, schema: {type: boolean}}
+      - {name: export_target, in: query, schema: {type: array, items: {type: string}}}
+      - {name: export_target_id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: import_target, in: query, schema: {type: array, items: {type: string}}}
+      - {name: import_target_id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: limit, in: query, schema: {type: integer}}
+      - {name: name, in: query, schema: {type: array, items: {type: string}}}
+      - {name: offset, in: query, schema: {type: integer}}
+      - {name: ordering, in: query, schema: {type: string}}
+      - {name: q, in: query, schema: {type: string}}
+      - {name: rd, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tag, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tag_id, in: query, schema: {type: array, items: {type: integer}}}
+      - {name: tenant, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tenant_group, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tenant_group_id, in: query, schema: {type: array, items: {type: string}}}
+      - {name: tenant_id, in: query, schema: {type: array, items: {type: integer}}}
+      responses:
+        '200':
+          description: 'Paginated list: {count, next, previous, results}'
+    post:
+      operationId: ipam_vrfs_create
+      summary: Create vrfs
+      description: 'Create a VRF. Required: name. Optional: rd, enforce_unique, tenant.'
+      tags: [ipam]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              properties:
+                name:
+                  type: string
+                rd:
+                  type: string
+                  description: Unique route distinguisher (as defined in RFC 4364)
+                tenant:
+                  description: see NetBox API
+                enforce_unique:
+                  type: boolean
+                  description: Prevent duplicate prefixes/IP addresses within this VRF
+                description:
+                  type: string
+                comments:
+                  type: string
+                import_targets:
+                  type: array
+                  items:
+                    type: integer
+                export_targets:
+                  type: array
+                  items:
+                    type: integer
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '201':
+          description: Created
+  /api/ipam/vrfs/{id}/:
+    get:
+      operationId: ipam_vrfs_retrieve
+      summary: Get one of the vrfs by ID
+      tags: [ipam]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+    patch:
+      operationId: ipam_vrfs_partial_update
+      summary: Partially update vrfs
+      tags: [ipam]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                rd:
+                  type: string
+                  description: Unique route distinguisher (as defined in RFC 4364)
+                tenant:
+                  description: see NetBox API
+                enforce_unique:
+                  type: boolean
+                  description: Prevent duplicate prefixes/IP addresses within this VRF
+                description:
+                  type: string
+                comments:
+                  type: string
+                import_targets:
+                  type: array
+                  items:
+                    type: integer
+                export_targets:
+                  type: array
+                  items:
+                    type: integer
+                tags:
+                  type: array
+                  items:
+                    type: object
+                custom_fields:
+                  type: object
+      responses:
+        '200':
+          description: Updated
+  /api/extras/tags/{id}/:
+    get:
+      operationId: extras_tags_retrieve
+      summary: Get one of the tags by ID
+      tags: [extras]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '200':
+          description: Object
+    patch:
+      operationId: extras_tags_partial_update
+      summary: Partially update tags
+      tags: [extras]
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                color:
+                  type: string
+                description:
+                  type: string
+                weight:
+                  type: integer
+                object_types:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Updated

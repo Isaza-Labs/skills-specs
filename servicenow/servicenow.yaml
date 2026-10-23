@@ -1,0 +1,569 @@
+openapi: 3.1.0
+info:
+  title: ServiceNow — Table API
+  version: "1.0"
+  description: >
+    The slice of the ServiceNow REST API a network operator actually reaches for:
+    incidents, change requests, the CMDB, and the people and groups the first three
+    point at.
+
+    No `servers` block on purpose. This document is attached to an Integration, and the
+    integration owns the instance URL and the credentials — writing a host here would
+    let a spec authenticate somewhere other than the system it claims to describe,
+    which is the confusion the integration link exists to remove.
+
+    Every path is under `/api/now/`, so the integration's base_url is the bare instance
+    (`https://<instance>.service-now.com`), with no trailing path.
+
+    Reads are generic, writes are not. `servicenow_table_list` and `servicenow_table_get`
+    take any table name, because refusing to read `cmdb_ci_ip_switch` because nobody
+    enumerated it is a worse answer than a 403 from ServiceNow's own ACLs. Creates and
+    updates are declared one table at a time: a mutation the governance tier has to
+    classify should be legible as "raise a change request", not as "PATCH some row in
+    some table". A generic write would be one operation the risk gate could say nothing
+    useful about.
+
+    There is no DELETE anywhere in here, and that is not an omission. ServiceNow records
+    are closed, resolved or cancelled — deleting an incident destroys the audit trail
+    that was the reason for opening it.
+
+tags:
+  - name: incident
+  - name: change
+  - name: cmdb
+  - name: directory
+  - name: table
+
+paths:
+  # ---------------------------------------------------------------- incidents
+  /api/now/table/incident:
+    get:
+      operationId: servicenow_incident_list
+      summary: List incidents
+      description: >
+        Filter with sysparm_query, an *encoded query*, not SQL and not JSON:
+        `active=true^priority<=2^ORDERBYDESCsys_updated_on`. Always pass sysparm_limit;
+        the default without it is 10000 rows.
+      tags: [incident]
+      parameters:
+        - $ref: "#/components/parameters/SysparmQuery"
+        - $ref: "#/components/parameters/SysparmLimit"
+        - $ref: "#/components/parameters/SysparmOffset"
+        - $ref: "#/components/parameters/SysparmFields"
+        - $ref: "#/components/parameters/SysparmDisplayValue"
+        - $ref: "#/components/parameters/SysparmExcludeReferenceLink"
+      responses:
+        "200":
+          description: Matching incidents.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: servicenow_incident_create
+      summary: Open an incident
+      description: >
+        `short_description` is the only field worth calling required — everything else
+        has an instance default. Reference fields (caller_id, assignment_group,
+        cmdb_ci) take a sys_id, not a display name; resolve the name first with
+        servicenow_user_list, servicenow_group_list or servicenow_ci_list.
+      tags: [incident]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IncidentWrite" }
+      responses:
+        "201":
+          description: The created incident, including its number and sys_id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordEnvelope" }
+        "400": { description: A field name does not exist on the table, or a reference did not resolve. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/now/table/incident/{sys_id}:
+    parameters:
+      - $ref: "#/components/parameters/SysId"
+    get:
+      operationId: servicenow_incident_get
+      summary: Get one incident by sys_id
+      description: >
+        By sys_id, not by number. To go from INC0010023 to a record, call
+        servicenow_incident_list with `sysparm_query=number=INC0010023`.
+      tags: [incident]
+      parameters:
+        - $ref: "#/components/parameters/SysparmFields"
+        - $ref: "#/components/parameters/SysparmDisplayValue"
+      responses:
+        "200":
+          description: The incident.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordEnvelope" }
+        "404": { description: No record with that sys_id, or ACLs hide it from this user. }
+    patch:
+      operationId: servicenow_incident_update
+      summary: Update an incident
+      description: >
+        Partial update — send only the fields that change. PUT exists on this table and
+        is deliberately not exposed: it replaces the record, so an omitted field is
+        cleared, and that has silently wiped assignment and work notes on people who
+        meant to move the state.
+      tags: [incident]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IncidentWrite" }
+      responses:
+        "200":
+          description: The updated incident.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordEnvelope" }
+        "400": { description: Unknown field, or a state transition the workflow refuses. }
+        "404": { description: No record with that sys_id. }
+
+  # ----------------------------------------------------------- change requests
+  /api/now/table/change_request:
+    get:
+      operationId: servicenow_change_list
+      summary: List change requests
+      description: >
+        The table a network change lands in before it is executed. Useful filters:
+        `state=-2` (scheduled), `approval=approved`,
+        `start_date>=javascript:gs.beginningOfToday()`.
+      tags: [change]
+      parameters:
+        - $ref: "#/components/parameters/SysparmQuery"
+        - $ref: "#/components/parameters/SysparmLimit"
+        - $ref: "#/components/parameters/SysparmOffset"
+        - $ref: "#/components/parameters/SysparmFields"
+        - $ref: "#/components/parameters/SysparmDisplayValue"
+        - $ref: "#/components/parameters/SysparmExcludeReferenceLink"
+      responses:
+        "200":
+          description: Matching change requests.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      operationId: servicenow_change_create
+      summary: Raise a change request
+      description: >
+        `type` decides the approval path: `standard` is pre-approved from a template,
+        `normal` goes to CAB, `emergency` shortcuts it. A workflow that must not run
+        until someone signs off should create a `normal` change and poll
+        servicenow_change_get for `approval=approved` rather than assuming.
+      tags: [change]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangeWrite" }
+      responses:
+        "201":
+          description: The created change request, including its number and sys_id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordEnvelope" }
+        "400": { description: A field name does not exist on the table, or a reference did not resolve. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/now/table/change_request/{sys_id}:
+    parameters:
+      - $ref: "#/components/parameters/SysId"
+    get:
+      operationId: servicenow_change_get
+      summary: Get one change request by sys_id
+      description: >
+        This is the gate check. Read `state` and `approval` here before letting a
+        workflow touch a device.
+      tags: [change]
+      parameters:
+        - $ref: "#/components/parameters/SysparmFields"
+        - $ref: "#/components/parameters/SysparmDisplayValue"
+      responses:
+        "200":
+          description: The change request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordEnvelope" }
+        "404": { description: No record with that sys_id. }
+    patch:
+      operationId: servicenow_change_update
+      summary: Update a change request
+      description: >
+        Partial update. Moving `state` to review or closed usually also wants
+        `close_code` and `close_notes`; the change workflow rejects the transition
+        without them.
+      tags: [change]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangeWrite" }
+      responses:
+        "200":
+          description: The updated change request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordEnvelope" }
+        "400": { description: Unknown field, or a state transition the workflow refuses. }
+        "404": { description: No record with that sys_id. }
+
+  # --------------------------------------------------------------------- cmdb
+  /api/now/table/cmdb_ci:
+    get:
+      operationId: servicenow_ci_list
+      summary: List configuration items
+      description: >
+        The base CMDB table, so it returns every class of CI. `sys_class_name` tells
+        you which, and filtering on it is how you narrow to network gear:
+        `sys_class_name=cmdb_ci_netgear`. For the network classes specifically, prefer
+        servicenow_netgear_list — same rows, one fewer thing to get wrong.
+      tags: [cmdb]
+      parameters:
+        - $ref: "#/components/parameters/SysparmQuery"
+        - $ref: "#/components/parameters/SysparmLimit"
+        - $ref: "#/components/parameters/SysparmOffset"
+        - $ref: "#/components/parameters/SysparmFields"
+        - $ref: "#/components/parameters/SysparmDisplayValue"
+        - $ref: "#/components/parameters/SysparmExcludeReferenceLink"
+      responses:
+        "200":
+          description: Matching configuration items.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/now/table/cmdb_ci/{sys_id}:
+    parameters:
+      - $ref: "#/components/parameters/SysId"
+    get:
+      operationId: servicenow_ci_get
+      summary: Get one configuration item by sys_id
+      tags: [cmdb]
+      parameters:
+        - $ref: "#/components/parameters/SysparmFields"
+        - $ref: "#/components/parameters/SysparmDisplayValue"
+      responses:
+        "200":
+          description: The configuration item.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordEnvelope" }
+        "404": { description: No record with that sys_id. }
+
+  /api/now/table/cmdb_ci_netgear:
+    get:
+      operationId: servicenow_netgear_list
+      summary: List network gear CIs (switches, routers, firewalls)
+      description: >
+        Reconciling this against Nashira's own device inventory is the usual reason to
+        call it. `ip_address`, `name` and `serial_number` are the fields that match;
+        `install_status=1` is "installed", which is how you skip retired kit.
+      tags: [cmdb]
+      parameters:
+        - $ref: "#/components/parameters/SysparmQuery"
+        - $ref: "#/components/parameters/SysparmLimit"
+        - $ref: "#/components/parameters/SysparmOffset"
+        - $ref: "#/components/parameters/SysparmFields"
+        - $ref: "#/components/parameters/SysparmDisplayValue"
+        - $ref: "#/components/parameters/SysparmExcludeReferenceLink"
+      responses:
+        "200":
+          description: Matching network CIs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  # ---------------------------------------------------------------- directory
+  /api/now/table/sys_user:
+    get:
+      operationId: servicenow_user_list
+      summary: Look up users
+      description: >
+        Almost always a lookup rather than a listing: a reference field wants a sys_id
+        and you have a name. `sysparm_query=user_name=rlozada` or
+        `email=someone@example.com`, with sysparm_fields=sys_id,name,email to keep the
+        response small.
+      tags: [directory]
+      parameters:
+        - $ref: "#/components/parameters/SysparmQuery"
+        - $ref: "#/components/parameters/SysparmLimit"
+        - $ref: "#/components/parameters/SysparmOffset"
+        - $ref: "#/components/parameters/SysparmFields"
+        - $ref: "#/components/parameters/SysparmDisplayValue"
+      responses:
+        "200":
+          description: Matching users.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/now/table/sys_user_group:
+    get:
+      operationId: servicenow_group_list
+      summary: Look up assignment groups
+      description: >
+        What `assignment_group` on an incident or change wants. Query by `name`, take
+        `sys_id`.
+      tags: [directory]
+      parameters:
+        - $ref: "#/components/parameters/SysparmQuery"
+        - $ref: "#/components/parameters/SysparmLimit"
+        - $ref: "#/components/parameters/SysparmOffset"
+        - $ref: "#/components/parameters/SysparmFields"
+      responses:
+        "200":
+          description: Matching groups.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  # ------------------------------------------------------------ generic reads
+  /api/now/table/{tableName}:
+    parameters:
+      - $ref: "#/components/parameters/TableName"
+    get:
+      operationId: servicenow_table_list
+      summary: Read any table by name
+      description: >
+        The escape hatch for the tables nobody enumerated above — sc_request,
+        cmdb_rel_ci, sys_journal_field, a custom u_ table. Read-only by design: the
+        named create/update operations exist so the risk gate can say something useful
+        about a mutation, and a generic write would defeat that.
+
+        ServiceNow's ACLs still apply per row and per field, so this cannot read more
+        than the integration's own user can.
+      tags: [table]
+      parameters:
+        - $ref: "#/components/parameters/SysparmQuery"
+        - $ref: "#/components/parameters/SysparmLimit"
+        - $ref: "#/components/parameters/SysparmOffset"
+        - $ref: "#/components/parameters/SysparmFields"
+        - $ref: "#/components/parameters/SysparmDisplayValue"
+        - $ref: "#/components/parameters/SysparmExcludeReferenceLink"
+      responses:
+        "200":
+          description: Matching records.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordList" }
+        "400": { description: No such table, or the query references a field it does not have. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/now/table/{tableName}/{sys_id}:
+    parameters:
+      - $ref: "#/components/parameters/TableName"
+      - $ref: "#/components/parameters/SysId"
+    get:
+      operationId: servicenow_table_get
+      summary: Read one record from any table by sys_id
+      tags: [table]
+      parameters:
+        - $ref: "#/components/parameters/SysparmFields"
+        - $ref: "#/components/parameters/SysparmDisplayValue"
+      responses:
+        "200":
+          description: The record.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordEnvelope" }
+        "404": { description: No record with that sys_id on that table. }
+
+components:
+  parameters:
+    TableName:
+      name: tableName
+      in: path
+      required: true
+      description: Table to read, by its database name (`incident`, `cmdb_rel_ci`, `u_my_table`).
+      schema: { type: string }
+
+    SysId:
+      name: sys_id
+      in: path
+      required: true
+      description: The record's 32-character sys_id. Not the display number (INC…, CHG…).
+      schema: { type: string, pattern: "^[0-9a-f]{32}$" }
+
+    SysparmQuery:
+      name: sysparm_query
+      in: query
+      description: >
+        ServiceNow *encoded query*. `^` is AND, `^OR` is OR, `^ORDERBY<field>` and
+        `^ORDERBYDESC<field>` sort. Operators include `=`, `!=`, `<`, `>`, `LIKE`,
+        `STARTSWITH`, `IN` (comma-separated), `ISEMPTY`, `ISNOTEMPTY`. Dates take
+        `javascript:gs.beginningOfToday()` and friends.
+
+        Example: `active=true^priority IN 1,2^ORDERBYDESCsys_updated_on`.
+      schema: { type: string }
+
+    SysparmLimit:
+      name: sysparm_limit
+      in: query
+      description: >
+        Rows to return. Pass it. Omitting it does not mean "a sensible page" — it means
+        10000 rows, which is how a listing call becomes a context-window incident.
+      schema: { type: integer, default: 50, minimum: 1, maximum: 1000 }
+
+    SysparmOffset:
+      name: sysparm_offset
+      in: query
+      description: Rows to skip. Paginate with limit+offset; ServiceNow returns no cursor.
+      schema: { type: integer, default: 0, minimum: 0 }
+
+    SysparmFields:
+      name: sysparm_fields
+      in: query
+      description: >
+        Comma-separated allow-list of fields to return. A record has ~90 columns and you
+        wanted four of them, so this is the difference between a readable answer and a
+        wall of nulls.
+      schema: { type: string }
+      examples:
+        incident: { value: "number,short_description,state,priority,assignment_group" }
+
+    SysparmDisplayValue:
+      name: sysparm_display_value
+      in: query
+      description: >
+        `false` (default) returns raw values — a reference field comes back as a sys_id
+        and `state` as `2`. `true` returns what the UI shows ("In Progress", the group's
+        name). `all` returns both, as `{value, display_value}` per field.
+
+        Use `true` when a human will read the answer, `false` when the value feeds
+        another call.
+      schema: { type: string, enum: ["true", "false", "all"], default: "false" }
+
+    SysparmExcludeReferenceLink:
+      name: sysparm_exclude_reference_link
+      in: query
+      description: >
+        `true` drops the `link` URL that accompanies every reference field. Roughly
+        halves the payload of a wide read and nothing downstream needs the URLs.
+      schema: { type: boolean, default: false }
+
+  responses:
+    Unauthenticated:
+      description: >
+        No usable credential. On an instance with Basic Auth Restriction enabled this is
+        also what a *correct* username and password get when the user has no Basic Auth
+        exception — the message says "User is not authenticated" either way. Check the
+        integration's auth method before re-entering the secret.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: >
+        Authenticated, but an ACL refused the table, the row or the field. Different
+        fault from a 401 and a different fix: the integration's user needs a role
+        (`itil` for incidents, `asset` or `cmdb_read` for the CMDB).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    RecordList:
+      type: object
+      description: Every Table API read wraps its payload in `result`.
+      properties:
+        result:
+          type: array
+          items: { type: object, additionalProperties: true }
+
+    RecordEnvelope:
+      type: object
+      properties:
+        result: { type: object, additionalProperties: true }
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message: { type: string }
+            detail: { type: string }
+        status: { type: string }
+
+    IncidentWrite:
+      type: object
+      description: >
+        Fields worth naming. The table has many more and ServiceNow accepts any of them,
+        so this is a starting point rather than a boundary — an unknown field name is a
+        400 from the instance, not a silent no-op.
+      properties:
+        short_description:
+          type: string
+          description: One-line summary. The only field a create really needs.
+        description: { type: string, description: Full narrative. }
+        caller_id: { type: string, description: sys_id of a sys_user. }
+        assignment_group: { type: string, description: sys_id of a sys_user_group. }
+        assigned_to: { type: string, description: sys_id of a sys_user. }
+        cmdb_ci: { type: string, description: sys_id of the affected CI. }
+        category: { type: string, description: "e.g. network, hardware, software." }
+        subcategory: { type: string }
+        impact:
+          type: string
+          enum: ["1", "2", "3"]
+          description: 1 high, 2 medium, 3 low. With urgency, derives priority.
+        urgency: { type: string, enum: ["1", "2", "3"], description: 1 high, 2 medium, 3 low. }
+        state:
+          type: string
+          enum: ["1", "2", "3", "6", "7", "8"]
+          description: >
+            1 New, 2 In Progress, 3 On Hold, 6 Resolved, 7 Closed, 8 Canceled. Resolving
+            (6) also requires close_code and close_notes.
+        hold_reason: { type: string, description: Required when moving to state 3. }
+        close_code: { type: string, description: Required with state 6 or 7. }
+        close_notes: { type: string, description: Required with state 6 or 7. }
+        work_notes:
+          type: string
+          description: >
+            Appends to the internal journal — it never replaces, so this is the safe way
+            for a workflow to leave a trace of what it did.
+        comments: { type: string, description: Appends to the customer-visible journal. }
+
+    ChangeWrite:
+      type: object
+      properties:
+        short_description: { type: string, description: One-line summary. Required in practice. }
+        description: { type: string }
+        type:
+          type: string
+          enum: [standard, normal, emergency]
+          description: Decides the approval path. `standard` is pre-approved.
+        category: { type: string, description: "e.g. Network." }
+        cmdb_ci: { type: string, description: sys_id of the CI being changed. }
+        assignment_group: { type: string, description: sys_id of a sys_user_group. }
+        requested_by: { type: string, description: sys_id of a sys_user. }
+        start_date:
+          type: string
+          description: Planned start, UTC, `YYYY-MM-DD HH:MM:SS`. Not ISO-8601 — no `T`, no `Z`.
+        end_date: { type: string, description: Planned end, same format as start_date. }
+        implementation_plan: { type: string }
+        backout_plan: { type: string }
+        test_plan: { type: string }
+        risk: { type: string, enum: ["2", "3", "4"], description: 2 High, 3 Moderate, 4 Low. }
+        impact: { type: string, enum: ["1", "2", "3"], description: 1 High, 2 Medium, 3 Low. }
+        state:
+          type: string
+          enum: ["-5", "-4", "-3", "-2", "-1", "0", "3", "4"]
+          description: >
+            -5 New, -4 Assess, -3 Authorize, -2 Scheduled, -1 Implement, 0 Review,
+            3 Closed, 4 Canceled.
+        close_code: { type: string, description: Required to reach state 0 or 3. }
+        close_notes: { type: string, description: Required to reach state 0 or 3. }
+        work_notes: { type: string, description: Appends to the internal journal. }

@@ -1,0 +1,1692 @@
+openapi: "3.0.3"
+info:
+  title: Action1 REST API
+  version: "3.0"
+  description: >
+    Action1 cloud patch management / RMM native REST API v3.0.
+
+    AUTH: OAuth2 client credentials. POST /oauth2/token with
+    Content-Type: application/x-www-form-urlencoded and body
+    client_id=...&client_secret=... -> {access_token, refresh_token,
+    expires_in: 3600, token_type: "bearer"}. Send
+    Authorization: Bearer <access_token> on every other call.
+
+    PAGINATION (READ THIS FIRST): every GET that returns a collection
+    answers with a ResultPage envelope:
+    {id, type: "ResultPage", name, self, items: [...], total_items,
+    limit, next_page, prev_page}. The server default page size is 50.
+    If you do not send `from` and `limit` you get ONLY the first 50
+    items and the rest are silently dropped. `total_items` and `limit`
+    are returned as STRINGS ("324", "50"), so cast them with int()
+    before comparing. Every list operation below declares `from` and
+    `limit` as REQUIRED so they are always transmitted. Never present a
+    result set to the user until the pagination loop has drained it.
+
+    PAGE SIZE CEILING: 200. Action1's own PSAction1 module sets
+    $Action1_PagedGetRequestDefaultLimit = 200 and validates every
+    caller-supplied page size against it (Test-Action1PageSize throws
+    above the maximum). Requesting limit=1000 is outside what the
+    vendor's own client will emit and produces multi-megabyte bodies
+    that break downstream consumers long before Action1 complains.
+
+    ADVANCING THE OFFSET: do not step by the limit you sent. PSAction1
+    re-reads the paging metadata from every response because, in its own
+    words, "some endpoints may normalize the requested limit, update
+    total_items between requests, or return unexpected paging values.
+    This also prevents infinite loops when the returned offset does not
+    advance." Step by int(response.from) + len(response.items), and
+    abort the loop if the next offset is not strictly greater than the
+    previous one.
+
+    KNOWN QUIRK: the organizations endpoint returns an EMPTY first page
+    for limit=1 sent without `from` (documented in PSAction1, which
+    works around it by asking for limit=2 on the first page). Always
+    send `from` explicitly, and treat a page size of 1 as a smoke test
+    rather than a normal read pattern.
+
+    RESPONSE SIZE: the failure mode in agent runtimes is not a bad HTTP
+    status, it is a 200 whose body is too large to survive whatever sits
+    between the API and the consumer. Constrain the payload at the
+    source: keep limit at 100-200, and project fields instead of asking
+    for `*`. See the `fields` parameter notes.
+
+    RATE LIMIT: keep under 30 requests/minute per Action1 Enterprise or
+    the API answers 429.
+
+servers:
+  - url: https://app.eu.action1.com/api/3.0
+    description: Europe (default for this deployment)
+  - url: https://app.action1.com/api/3.0
+    description: North America
+  - url: https://app.na-2.action1.com/api/3.0
+    description: North America 2
+  - url: https://app.au.action1.com/api/3.0
+    description: Australia
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ============================================================
+  # Authentication
+  # ============================================================
+  /oauth2/token:
+    post:
+      operationId: oauth2_token
+      summary: Get an access token (OAuth2 client credentials)
+      description: >
+        Exchange API credentials for a JWT bearer token. Body MUST be sent as
+        application/x-www-form-urlencoded, NOT as JSON. Token lives 3600 s.
+        Create the credentials in the Action1 console under
+        Configuration > Users & API Credentials.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [client_id, client_secret]
+              properties:
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+      responses:
+        "200":
+          description: "{access_token, refresh_token, expires_in, token_type}"
+
+  # ============================================================
+  # Identity / tenancy
+  # ============================================================
+  /me:
+    get:
+      operationId: me_get
+      summary: Get the identity behind the current token
+      description: >
+        Returns the caller identity and the default organization. Cheap call —
+        use it to verify credentials before running anything else.
+      tags: [core]
+      responses:
+        "200":
+          description: Current user object
+
+  /enterprise:
+    get:
+      operationId: enterprise_get
+      summary: Get enterprise-level settings
+      tags: [core]
+      responses:
+        "200":
+          description: Enterprise object
+    patch:
+      operationId: enterprise_update
+      summary: Update enterprise-level settings
+      tags: [core]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Enterprise updated
+
+  /users:
+    get:
+      operationId: users_list
+      summary: List console users
+      tags: [core]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage: {items, total_items, limit, next_page, prev_page, self}. total_items and limit are STRINGS."
+
+  /organizations:
+    get:
+      operationId: organizations_list
+      summary: List organizations
+      description: >
+        Every other endpoint in this API is scoped by organization_id, so this
+        is normally the first call you make. Cache the mapping name -> id.
+      tags: [organizations]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+          description: Filter by organization name
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of Organization objects. total_items and limit are STRINGS."
+    post:
+      operationId: organizations_create
+      summary: Create an organization
+      tags: [organizations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        "200":
+          description: Organization created
+
+  /organizations/{organization_id}:
+    get:
+      operationId: organizations_get
+      summary: Get one organization
+      tags: [organizations]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Organization object
+    patch:
+      operationId: organizations_update
+      summary: Update an organization
+      tags: [organizations]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        "200":
+          description: Organization updated
+    delete:
+      operationId: organizations_delete
+      summary: Delete an organization
+      description: DESTRUCTIVE. Always ask the user for explicit confirmation first.
+      tags: [organizations]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Organization deleted
+
+  # ============================================================
+  # Managed endpoints (devices)
+  # ============================================================
+  /endpoints/managed/{organization_id}:
+    get:
+      operationId: endpoints_managed_list
+      summary: List managed endpoints (devices)
+      description: >
+        Main device inventory call. Filtering is field-based: any field that
+        appears inside an item can normally be used as a query parameter
+        (name, status, OS, platform, agent_version, user, address, ...).
+        Use fields=* to get extended data (missing_critical_updates,
+        missing_other_updates). Large tenants have thousands of endpoints —
+        this endpoint MUST be drained with the from/limit loop.
+      tags: [endpoints]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+          description: Organization ID, or "all" / the default org id from /me
+        - name: fields
+          in: query
+          schema: { type: string }
+          description: >
+            "*" for all fields including extended data (missing_critical_updates,
+            missing_other_updates); "#" or omitted for default fields; or a
+            comma-separated list of field names. URL-encode "*" as %2A.
+
+            PREFER AN EXPLICIT LIST. `fields=*` on this operation returns
+            hardware, network, group_membership, custom attributes,
+            missing_updates and vulnerabilities per row — hundreds of KB for a
+            few dozen endpoints, and the single biggest cause of oversized
+            responses in this API. Ask for the columns the answer needs, e.g.
+            fields=name,status,OS,agent_version,last_seen. Use `*` only for a
+            single-object read (endpoints_managed_get) or when the user
+            explicitly asked for the full record.
+        - name: name
+          in: query
+          schema: { type: string }
+          description: >
+            Filter by endpoint name. Action1 documents filtering as exact
+            field=value matching, and states that multiple query parameters are
+            ANDed ("returns records that match both filtering criterias").
+
+            VERIFY, DO NOT ASSUME. If a name filter appears to return every
+            endpoint, do not conclude the backend ignores it until you have
+            compared len(items) with and without the parameter on two otherwise
+            identical calls. A filter that silently does nothing usually means
+            the query string is not reaching Action1 — check the layer in
+            between before blaming the API. When exactness matters, resolve the
+            id from a list and read the object with endpoints_managed_get.
+        - name: status
+          in: query
+          schema: { type: string }
+          description: "Filter by connection status, e.g. Connected / Disconnected"
+        - name: OS
+          in: query
+          schema: { type: string }
+          description: Filter by operating system name
+        - name: platform
+          in: query
+          schema: { type: string }
+          description: Filter by platform
+        - name: agent_version
+          in: query
+          schema: { type: string }
+          description: Filter by installed agent version
+        - name: user
+          in: query
+          schema: { type: string }
+          description: Filter by logged-on user
+        - name: address
+          in: query
+          schema: { type: string }
+          description: Filter by internal IP address
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of Endpoint objects. total_items and limit are STRINGS."
+
+  /endpoints/managed/{organization_id}/{endpoint_id}:
+    get:
+      operationId: endpoints_managed_get
+      summary: Get one managed endpoint
+      tags: [endpoints]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: endpoint_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: fields
+          in: query
+          schema: { type: string }
+          description: '"*" (%2A) to include extended data'
+      responses:
+        "200":
+          description: Endpoint object
+    patch:
+      operationId: endpoints_managed_update
+      summary: Update a managed endpoint
+      description: Typically used to set the free-text comment or custom attributes.
+      tags: [endpoints]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: endpoint_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment: { type: string }
+                name: { type: string }
+      responses:
+        "200":
+          description: Endpoint updated
+    delete:
+      operationId: endpoints_managed_delete
+      summary: Unmanage / remove an endpoint
+      description: DESTRUCTIVE. Ask for explicit confirmation and echo the endpoint name before calling.
+      tags: [endpoints]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: endpoint_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Endpoint removed
+
+  /endpoints/status/{organization_id}:
+    get:
+      operationId: endpoints_status_list
+      summary: List endpoint connection status
+      tags: [endpoints]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of endpoint status objects."
+
+  /endpoints/discovery/{organization_id}:
+    get:
+      operationId: endpoints_discovery_list
+      summary: List discovered (unmanaged) endpoints / agent deployment status
+      tags: [endpoints]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of discovered endpoints."
+
+  # ============================================================
+  # Endpoint groups
+  # ============================================================
+  /endpoints/groups/{organization_id}:
+    get:
+      operationId: endpoint_groups_list
+      summary: List endpoint groups
+      tags: [groups]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: name
+          in: query
+          schema: { type: string }
+          description: Filter by group name
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of EndpointGroup objects."
+    post:
+      operationId: endpoint_groups_create
+      summary: Create an endpoint group
+      tags: [groups]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                type:
+                  type: string
+                  description: "Group type, e.g. static or dynamic"
+                include_filter:
+                  type: string
+                  description: Membership filter expression for dynamic groups
+      responses:
+        "200":
+          description: Group created
+
+  /endpoints/groups/{organization_id}/{group_id}:
+    get:
+      operationId: endpoint_groups_get
+      summary: Get one endpoint group
+      tags: [groups]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: group_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: EndpointGroup object
+    patch:
+      operationId: endpoint_groups_update
+      summary: Update an endpoint group
+      tags: [groups]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: group_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                include_filter: { type: string }
+      responses:
+        "200":
+          description: Group updated
+
+  /endpoints/groups/{organization_id}/{group_id}/contents:
+    get:
+      operationId: endpoint_group_members_list
+      summary: List members of an endpoint group
+      tags: [groups]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: group_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: fields
+          in: query
+          schema: { type: string }
+          description: '"*" (%2A) to include extended data'
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of group member objects."
+    post:
+      operationId: endpoint_group_members_add
+      summary: Add endpoints to a group
+      tags: [groups]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: group_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  description: 'Array of {id, type: "Endpoint"} objects'
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      type: { type: string, default: "Endpoint" }
+      responses:
+        "200":
+          description: Members added
+    patch:
+      operationId: endpoint_group_members_set
+      summary: Replace the member list of a group
+      tags: [groups]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: group_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      type: { type: string, default: "Endpoint" }
+      responses:
+        "200":
+          description: Members replaced
+    delete:
+      operationId: endpoint_group_members_remove
+      summary: Remove endpoints from a group
+      tags: [groups]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: group_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      type: { type: string, default: "Endpoint" }
+      responses:
+        "200":
+          description: Members removed
+
+  # ============================================================
+  # Installed software (apps)
+  # ============================================================
+  /apps/{organization_id}/data:
+    get:
+      operationId: installed_software_list
+      summary: List installed software across the organization
+      description: >
+        Software inventory aggregated per organization. This is one of the
+        biggest collections in the API — draining pagination is mandatory.
+      tags: [software]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: name
+          in: query
+          schema: { type: string }
+          description: Filter by application name
+        - name: vendor
+          in: query
+          schema: { type: string }
+          description: Filter by publisher / vendor
+        - name: version
+          in: query
+          schema: { type: string }
+          description: Filter by version
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of installed software records."
+
+  /apps/{organization_id}/data/{endpoint_id}:
+    get:
+      operationId: endpoint_software_list
+      summary: List software installed on one endpoint
+      tags: [software]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: endpoint_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of installed software records for the endpoint."
+
+  /apps/{organization_id}/requery/{endpoint_id}:
+    get:
+      operationId: installed_software_requery
+      summary: Trigger a fresh software inventory scan on an endpoint
+      description: >
+        Asks the agent to re-scan installed software. Results are not returned
+        synchronously — poll endpoint_software_list afterwards. If the server
+        answers 405 for GET, retry the same path with POST.
+      tags: [software]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: endpoint_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Requery accepted
+
+  # ============================================================
+  # Software repository / packages / scripts
+  # ============================================================
+  /packages/all:
+    get:
+      operationId: packages_list
+      summary: List packages available in the Action1 software repository
+      tags: [software]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+          description: Filter by package name
+        - name: fields
+          in: query
+          schema: { type: string }
+          description: 'Use "versions" to include package version details'
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of Package objects."
+
+  /packages/{organization_id}/{package_id}:
+    get:
+      operationId: packages_get_for_org
+      summary: Get one package as configured for an organization
+      tags: [software]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: package_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: fields
+          in: query
+          schema: { type: string }
+          description: 'Use "versions" or "*" (%2A) for extended data'
+      responses:
+        "200":
+          description: Package object
+
+  /software-repository/all/{package_id}:
+    get:
+      operationId: package_versions_list
+      summary: List versions of a repository package
+      description: "Call with fields=versions to get the deployable version list."
+      tags: [software]
+      parameters:
+        - name: package_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: fields
+          in: query
+          schema: { type: string, default: "versions" }
+          description: 'Set to "versions" to include the version array'
+      responses:
+        "200":
+          description: Package with versions
+
+  /scripts/all:
+    get:
+      operationId: scripts_list
+      summary: List scripts in the script library
+      tags: [scripts]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+          description: Filter by script name
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of Script objects."
+
+  # ============================================================
+  # Updates / patching
+  # ============================================================
+  /updates/all:
+    get:
+      operationId: updates_catalog_list
+      summary: List the full update catalog
+      tags: [updates]
+      parameters:
+        - name: security_severity
+          in: query
+          schema: { type: string }
+          description: "Critical, Important, Moderate, Low, Unspecified"
+        - name: approval_status
+          in: query
+          schema: { type: string }
+          description: "New, Approved, Declined"
+        - name: fields
+          in: query
+          schema: { type: string }
+          description: '"*" (%2A) to include outdated_endpoints counts'
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The full update catalog is tens of thousands of rows - always filter as well as paginate, and never drain it into a conversation."
+      responses:
+        "200":
+          description: "ResultPage of Update objects."
+
+  /updates/{organization_id}:
+    get:
+      operationId: missing_updates_list
+      summary: List updates missing on the organization's endpoints
+      description: >
+        The core patch-compliance call. Combine security_severity and
+        approval_status filters with full pagination.
+      tags: [updates]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: security_severity
+          in: query
+          schema: { type: string }
+          description: "Critical, Important, Moderate, Low, Unspecified"
+        - name: approval_status
+          in: query
+          schema: { type: string }
+          description: "New, Approved, Declined"
+        - name: endpoint_id
+          in: query
+          schema: { type: string }
+          description: Restrict to a single endpoint
+        - name: fields
+          in: query
+          schema: { type: string }
+          description: '"*" (%2A) to include outdated_endpoints counts'
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of missing update records."
+
+  /updates/installed/{organization_id}:
+    get:
+      operationId: installed_updates_list
+      summary: List updates already installed on the organization's endpoints
+      tags: [updates]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: endpoint_id
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of installed update records."
+
+  /updates/installed/{organization_id}/requery:
+    get:
+      operationId: installed_updates_requery
+      summary: Trigger a fresh installed-updates scan
+      description: Asynchronous. If GET returns 405, retry the same path with POST.
+      tags: [updates]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Requery accepted
+
+  # ============================================================
+  # Vulnerabilities
+  # ============================================================
+  /vulnerabilities/{organization_id}:
+    get:
+      operationId: vulnerabilities_list
+      summary: List vulnerabilities (CVEs) detected in the organization
+      tags: [vulnerabilities]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: severity
+          in: query
+          schema: { type: string }
+          description: "Critical, High, Medium, Low"
+        - name: cve_id
+          in: query
+          schema: { type: string }
+          description: "Filter by CVE identifier, e.g. CVE-2025-12345"
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of Vulnerability objects."
+
+  /vulnerabilities/{organization_id}/{cve_id}:
+    get:
+      operationId: vulnerabilities_get
+      summary: Get one vulnerability
+      tags: [vulnerabilities]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: cve_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Vulnerability object
+
+  /vulnerabilities/{organization_id}/{cve_id}/endpoints:
+    get:
+      operationId: vulnerability_endpoints_list
+      summary: List endpoints affected by a vulnerability
+      tags: [vulnerabilities]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: cve_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of affected endpoints."
+
+  /vulnerabilities/{organization_id}/{cve_id}/remediations:
+    get:
+      operationId: vulnerability_remediations_list
+      summary: List remediations for a vulnerability
+      tags: [vulnerabilities]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: cve_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of remediation objects."
+    post:
+      operationId: vulnerability_remediation_create
+      summary: Create a remediation for a vulnerability
+      description: >
+        WRITE OPERATION that can push changes to endpoints. Confirm scope and
+        target with the user before calling.
+      tags: [vulnerabilities]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: cve_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                endpoints:
+                  type: array
+                  description: 'Targets, e.g. [{id: "ALL", type: "EndpointGroup"}]'
+                  items: { type: object }
+                actions:
+                  type: array
+                  description: See the deploy_update / run_script action templates in the skill
+                  items: { type: object }
+      responses:
+        "200":
+          description: Remediation created
+
+  /vulnerabilities/{organization_id}/{cve_id}/remediations/{remediation_id}:
+    patch:
+      operationId: vulnerability_remediation_update
+      summary: Update a vulnerability remediation
+      tags: [vulnerabilities]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: cve_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: remediation_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Remediation updated
+    delete:
+      operationId: vulnerability_remediation_delete
+      summary: Delete a vulnerability remediation
+      description: DESTRUCTIVE. Confirm with the user first.
+      tags: [vulnerabilities]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: cve_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: remediation_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Remediation deleted
+
+  # ============================================================
+  # Policies (deployments) and automations (schedules)
+  # ============================================================
+  /policies/instances/{organization_id}:
+    get:
+      operationId: policies_list
+      summary: List policy instances (deployments)
+      tags: [policies]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of Policy objects."
+    post:
+      operationId: policies_create
+      summary: Create a policy instance (deploy software, updates or a script)
+      description: >
+        HIGH IMPACT WRITE. Creating a policy instance executes work on real
+        endpoints. Always confirm the target set and the reboot options with
+        the user, and never default `endpoints` to [{id: "ALL"}] silently.
+        Use template_id "deploy_package" for software, "deploy_update" for
+        patches, "run_script" for scripts. Full body templates are in the skill.
+      tags: [policies]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, endpoints, actions]
+              properties:
+                name:
+                  type: string
+                retry_minutes:
+                  type: string
+                  default: "1440"
+                endpoints:
+                  type: array
+                  description: 'Targets: [{id: "<endpoint_or_group_id>", type: "Endpoint" | "EndpointGroup"}]. id "ALL" with type "EndpointGroup" means every endpoint in the organization.'
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      type: { type: string }
+                actions:
+                  type: array
+                  description: "Array of {name, template_id, params}. See skill for deploy_package / deploy_update / run_script parameter shapes."
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      template_id: { type: string }
+                      params: { type: object }
+      responses:
+        "200":
+          description: Policy instance created
+
+  /policies/instances/{organization_id}/{policy_id}:
+    get:
+      operationId: policies_get
+      summary: Get one policy instance
+      tags: [policies]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: policy_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Policy object
+
+  /policies/instances/{organization_id}/{policy_id}/endpoint_results:
+    get:
+      operationId: policy_results_list
+      summary: List per-endpoint results of a policy instance
+      tags: [policies]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: policy_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of per-endpoint results."
+
+  /policies/schedules/{organization_id}:
+    get:
+      operationId: automations_list
+      summary: List automations (scheduled policies)
+      tags: [automations]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of Automation objects."
+    post:
+      operationId: automations_create
+      summary: Create an automation (scheduled deployment or deferred remediation)
+      description: >
+        HIGH IMPACT WRITE. Same body shape as policies_create plus a schedule.
+        Confirm targets and timing with the user first.
+      tags: [automations]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, endpoints, actions]
+              properties:
+                name: { type: string }
+                retry_minutes: { type: string, default: "1440" }
+                schedule:
+                  type: object
+                  description: Recurrence / start time definition
+                endpoints:
+                  type: array
+                  items: { type: object }
+                actions:
+                  type: array
+                  items: { type: object }
+      responses:
+        "200":
+          description: Automation created
+
+  /policies/schedules/{organization_id}/{automation_id}:
+    patch:
+      operationId: automations_update
+      summary: Update an automation
+      tags: [automations]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: automation_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Automation updated
+
+  /automations/instances/{organization_id}:
+    get:
+      operationId: automation_instances_list
+      summary: List automation instances (runs)
+      tags: [automations]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: endpoint_id
+          in: query
+          schema: { type: string }
+          description: Restrict to automation runs affecting one endpoint
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of automation instances."
+
+  # ============================================================
+  # Reports and data sources
+  # ============================================================
+  /reports/all:
+    get:
+      operationId: reports_list
+      summary: List report categories (NOT a source of usable report ids)
+      description: >
+        DO NOT use this to discover a report_id. In practice this returns the
+        report CATEGORY tree (e.g. the root "Built-in Reports") rather than
+        concrete, exportable report definitions, and Action1 publishes no
+        endpoint that enumerates report ids.
+
+        Action1's own official example script
+        (Action1Corp/APIScripts/ExportReportFromAllOrganizations.ps1) does not
+        call this operation at all — it prompts the operator with
+        Read-Host "Enter the Report ID" and documents that the id is read out
+        of the console URL:
+        https://app.action1.com/console/reports/installed_software_1635264799139/summary
+        -> report_id = "installed_software_1635264799139"
+
+        So a report_id is a deployment-specific constant harvested once from
+        the console, not something to be discovered at runtime. Keep the ids
+        you need in a lookup table in the skill. If an id is missing, ask the
+        user to copy it from the console URL — do not go hunting through
+        reports_list or data_sources_list, which is a dead end that returns
+        very large, unactionable payloads.
+      tags: [reports]
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of Report definitions."
+
+  /reportdata/{organization_id}/{report_id}/data:
+    get:
+      operationId: report_data_get
+      summary: Get the rows of a report
+      description: >
+        Report rows are paginated exactly like every other collection. A report
+        with 5000 rows returns 50 unless you drain from/limit.
+      tags: [reports]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: report_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of report rows."
+
+  /reportdata/{organization_id}/{report_id}/export:
+    get:
+      operationId: report_export
+      summary: Export a report (raw CSV, not JSON)
+      description: >
+        Returns the whole report as a CSV file, NOT as a ResultPage — the
+        cheapest way to get a large report without paginating.
+
+        The response body is raw text. PSAction1 special-cases exactly two
+        operations as non-JSON — `$Rawlist = @('ReportExport', 'Logs')` — and
+        passes them through untouched. Any client that JSON-decodes this
+        response will fail; read it as text and write it straight to a file.
+
+        report_id is not discoverable through the API — see reports_list.
+      tags: [reports]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: report_id
+          in: path
+          required: true
+          schema: { type: string }
+          description: 'Harvested from the console URL, e.g. "installed_software_1635264799139"'
+      responses:
+        "200":
+          description: Raw CSV text (NOT a ResultPage, NOT JSON)
+
+  /reportdata/{organization_id}/{report_id}/requery:
+    get:
+      operationId: report_requery
+      summary: Refresh a report's data
+      description: Asynchronous. If GET returns 405, retry the same path with POST.
+      tags: [reports]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: report_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Requery accepted
+
+  /data-sources/all:
+    get:
+      operationId: data_sources_list
+      summary: List available report data sources
+      tags: [reports]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of data sources."
+
+  # ============================================================
+  # Audit log, settings, search
+  # ============================================================
+  /logs/{organization_id}:
+    get:
+      operationId: logs_list
+      summary: List audit log entries
+      tags: [core]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of audit log entries."
+
+  /setting_templates/{organization_id}:
+    get:
+      operationId: advanced_settings_list
+      summary: List advanced setting templates
+      tags: [core]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of setting templates."
+
+  /search/{organization_id}:
+    get:
+      operationId: search
+      summary: Free-text search across the organization
+      tags: [core]
+      parameters:
+        - name: organization_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Search text
+        - name: from
+          in: query
+          required: true
+          schema: { type: integer, default: 0 }
+          description: "PAGINATION OFFSET. Start at 0. Advance with next_from = int(response.from or current_from) + len(response.items) - never by the limit you sent. Stop when items is empty, when you have int(total_items) rows, or when next_from stops advancing."
+        - name: limit
+          in: query
+          required: true
+          schema: { type: integer, default: 200, minimum: 1, maximum: 200 }
+          description: "PAGE SIZE. Server default is 50 if omitted, which silently truncates - always send it. 200 is the ceiling used by Action1's own PSAction1 module (Test-Action1PageSize throws above it); do not ask for more. The server may still clamp or normalize the value, so page through by re-reading the response, never by the number you sent."
+      responses:
+        "200":
+          description: "ResultPage of search hits."
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Authorization: Bearer <access_token> obtained from oauth2_token."
+  schemas:
+    ResultPage:
+      type: object
+      description: >
+        Envelope returned by every collection GET. WARNING: total_items and
+        limit come back as STRINGS, and next_page / prev_page are empty
+        strings ("") when there is no such page — never truthy-test them
+        without checking for the empty string.
+
+        The only trustworthy measure of what a page actually contains is
+        len(items). `limit` is what the server says it applied and `self` is
+        a URL string — neither is proof that a filter or page size was
+        honoured, and in an agent runtime `self` may be reconstructed from
+        the REQUEST by the layer in between rather than returned by Action1.
+        When a page size or a filter appears to be ignored, compare
+        len(items) across two calls that differ only in that parameter
+        before concluding anything about the backend.
+      properties:
+        id: { type: string }
+        type: { type: string, example: "ResultPage" }
+        name: { type: string }
+        self:
+          type: string
+          description: >
+            Full URL of this request, e.g. ".../organizations?from=0&limit=50".
+            Diagnostic value only — never treat it as evidence that the server
+            applied the parameters it shows.
+        items:
+          type: array
+          items: { type: object }
+        from:
+          type: integer
+          description: >
+            Offset the server actually served this page from. PSAction1 reads
+            this back and computes the next offset as from + len(items). It is
+            not present on every endpoint — fall back to the offset you sent
+            when it is missing or negative.
+        total_items:
+          type: string
+          description: Total number of matching records, as a STRING. Cast with int().
+        limit:
+          type: string
+          description: Page size the server reports having applied, as a STRING. Diagnostic only — step the offset by len(items), not by this value and not by the value you sent.
+        next_page:
+          type: string
+          description: Absolute URL of the next page, or "" when this is the last page.
+        prev_page:
+          type: string
+          description: Absolute URL of the previous page, or "" when this is the first page.

@@ -8,7 +8,7 @@ One OpenAPI spec tells the agent *what* an external system can do.
 One skill tells it *how* to use it well.
 Attach both to an integration and the agent can drive that system on its own.
 
-[Catalog](#catalog) · [How it works](#how-it-works) · [Quick start](#quick-start) · [Conventions](#conventions) · [Contributing](#contributing)
+[Catalog](#catalog) · [How it works](#how-it-works) · [Load from the UI](#load-from-the-ui) · [Quick start](#quick-start-api) · [Conventions](#conventions) · [Contributing](#contributing)
 
 </div>
 
@@ -66,7 +66,50 @@ Both products **upsert** on the spec `api` and the skill `name`, and re-material
 integration's actions in the same call. Existing actions are matched by operation and
 keep their ids, so workflows that reference them keep working when a spec is updated.
 
-## Quick start
+## Load from the UI
+
+The fastest path: create the integration, pick the spec and the skill from this repo, and
+let the product build the action catalog. The recordings below use a throwaway
+`netbox-demo` integration; hosts and URLs are blurred.
+
+### Nashira
+
+*Integrations → New integration.* One dialog covers the whole setup:
+
+1. **Integration** tab: name, type, base URL and a stored credential from
+   *Credentials*. NetBox expects the `Token` authorization scheme; tick
+   **Allow private network** when NetBox runs on an internal address.
+2. **API specs** tab: *Choose .yaml files* → `netbox.yaml`. The api name is read from the file.
+3. **Skills** tab: *Choose .md files* → `netbox.md`, scoped to this integration.
+4. **Create.** The integration, the spec, the skill and the 76 actions land in one step.
+
+Then press the row's **Test** button: with a valid token the status turns *healthy*.
+
+<p align="center">
+  <img src="docs/nashira-load-spec-skill.gif" alt="Nashira: create a NetBox integration and attach netbox.yaml and netbox.md" width="900">
+</p>
+
+### FlowWeaver
+
+1. *Integrations → New integration*: name, type, base URL and auth method. Tick
+   **Allow private-network targets** when NetBox runs on an internal address.
+2. Open the new integration: **Load spec** → *Upload .yaml* → `netbox.yaml` → *Attach spec*.
+   The 76 operations become actions.
+3. **Load skill** → *Upload .md* → `netbox.md` → *Attach skill*.
+4. **Health check**: the status dot turns green. Set *Health check path* to an
+   authenticated endpoint such as `/api/status/`, so a wrong token shows as unhealthy
+   instead of passing a plain reachability probe.
+
+<p align="center">
+  <img src="docs/flowweaver-load-spec-skill.gif" alt="FlowWeaver: create a NetBox integration, load the spec and the skill, run the health check" width="900">
+</p>
+
+> **Names are unique per instance in FlowWeaver.** A spec `api` or a skill `name` that
+> already exists is *moved* to the integration you attach it to, and its content is
+> replaced. The recording above uses `netbox-demo` because the lab already has a NetBox
+> integration called `netbox`. Reuse a name only to update that same integration.
+
+## Quick start (API)
 
 You need an existing integration (base URL and credential already set) and an admin login.
 
